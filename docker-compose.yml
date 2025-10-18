@@ -1,0 +1,43 @@
+#version: '3.9'
+
+services:
+
+  test-postgres-db:
+    container_name: test-postgres-db
+    image: postgres
+    restart: always
+    shm_size: 128mb
+    ports:
+      - "127.0.0.1:5432:5432"
+    environment:
+      POSTGRES_DB: postgres
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    networks:
+      - app-network
+
+  test-postgres-adminer:
+    container_name: test-postgres-adminer
+    image: adminer
+    restart: always
+    ports:
+      - "127.0.0.1:1234:8080"
+    depends_on:
+      - test-postgres-db
+    networks:
+      - app-network
+
+  # test-zig-build:
+  #   build:
+  #     context: ..
+  #     dockerfile: docker/zig-build-linux.dockerfile
+  #   environment:
+  #     - DB_HOST=test-postgres-db
+  #   depends_on: 
+  #     - test-postgres-db
+  #   networks:
+  #     - app-network
+
+networks:
+  app-network:
+    driver: bridge
