@@ -5,6 +5,8 @@ const libpq = @cImport({
     @cInclude("libpq-fe.h");
 });
 
+const parser = @import("schema/parser.zig");
+
 fn getDbHost() []const u8 {
     // Check for environment variable, default to localhost for local development
     return std.process.getEnvVarOwned(std.heap.page_allocator, "DB_HOST") catch "localhost";
@@ -14,6 +16,11 @@ pub fn main() !void {
     // Prints to stderr, ignoring potential errors.
     std.debug.print("All your {s} are belong to us.\n", .{"codebase"});
     try prisma_zig.bufferedPrint();
+}
+
+test {
+    std.testing.refAllDecls(@This());
+    std.testing.refAllDecls(parser);
 }
 
 test "simple test" {
