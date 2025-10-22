@@ -6,6 +6,9 @@ const libpq = @cImport({
 });
 
 const parser = @import("schema/parser.zig");
+const generator = @import("codegen/generator.zig");
+
+const codegen_test = @import("test_codegen.zig");
 
 fn getDbHost() []const u8 {
     // Check for environment variable, default to localhost for local development
@@ -16,11 +19,14 @@ pub fn main() !void {
     // Prints to stderr, ignoring potential errors.
     std.debug.print("All your {s} are belong to us.\n", .{"codebase"});
     try prisma_zig.bufferedPrint();
+
+    try codegen_test.test_codegen();
 }
 
 test {
     std.testing.refAllDecls(@This());
     std.testing.refAllDecls(parser);
+    std.testing.refAllDecls(generator);
 }
 
 test "simple test" {

@@ -28,9 +28,13 @@ const TokenType = enum {
     right_brace, // }
     left_paren, // (
     right_paren, // )
+    left_bracket, // [
+    right_bracket, // ]
     question_mark, // ?
     at_symbol, // @
     equals, // =
+    comma, // ,
+    colon, // :
     newline,
 
     // Special
@@ -74,9 +78,13 @@ const Lexer = struct {
             '}' => self.makeToken(.right_brace),
             '(' => self.makeToken(.left_paren),
             ')' => self.makeToken(.right_paren),
+            '[' => self.makeToken(.left_bracket),
+            ']' => self.makeToken(.right_bracket),
             '?' => self.makeToken(.question_mark),
             '@' => self.makeToken(.at_symbol),
             '=' => self.makeToken(.equals),
+            ',' => self.makeToken(.comma),
+            ':' => self.makeToken(.colon),
             '\n' => self.makeTokenWithColumn(.newline, start_column),
             '"' => self.string(),
             else => {
@@ -323,7 +331,7 @@ pub const Parser = struct {
 
                     // Remove quotes from string literal
                     const table_name = table_name_token.lexeme[1 .. table_name_token.lexeme.len - 1];
-                    model.table_name = table_name; 
+                    model.table_name = table_name;
                 }
 
                 // Skip to next line
@@ -342,11 +350,29 @@ pub const Parser = struct {
 
     fn parseField(self: *Parser) ParseError!Field {
         const field_name_token = try self.consume(.identifier, "Expected field name");
-        const field_name = field_name_token.lexeme; 
+        const field_name = field_name_token.lexeme;
 
         const type_token = try self.consume(.identifier, "Expected field type");
-        const field_type = FieldType.fromString(type_token.lexeme) orelse {
-            std.log.err("Unknown field type: {s} at line {d}", .{ type_token.lexeme, type_token.line });
+        const type_str = type_token.lexeme;
+
+        // Check if this is an array type (Type[])
+        var is_array = false;
+        if (self.match(.left_bracket)) {
+            _ = try self.consume(.right_bracket, "Expected ']'");
+            is_array = true;
+        }
+
+        // Create the full type string for parsing
+        var full_type_str: []u8 = undefined;
+        if (is_array) {
+            full_type_str = try std.fmt.allocPrint(self.allocator, "{s}[]", .{type_str});
+        } else {
+            full_type_str = try self.allocator.dupe(u8, type_str);
+        }
+        defer self.allocator.free(full_type_str);
+
+        const field_type = FieldType.fromString(full_type_str) orelse {
+            std.log.err("Unknown field type: {s} at line {d}", .{ full_type_str, type_token.line });
             return ParseError.UnknownFieldType;
         };
 
@@ -392,7 +418,7 @@ pub const Parser = struct {
                 const token = self.current_token;
                 self.advance();
                 // Remove quotes
-                value = .{ .value =  token.lexeme[1 .. token.lexeme.len - 1] };
+                value = .{ .value = token.lexeme[1 .. token.lexeme.len - 1] };
             } else if (self.current_token.type == .number_literal) {
                 const token = self.current_token;
                 self.advance();
@@ -421,6 +447,54 @@ pub const Parser = struct {
             // Remove quotes
             const map_name = map_name_token.lexeme[1 .. map_name_token.lexeme.len - 1];
             return FieldAttribute.initMap(self.allocator, .{ .value = map_name });
+        } else if (std.mem.eql(u8, attr_name, "relation")) {
+            _ = try self.consume(.left_paren, "Expected '('");
+
+            var relation = types.RelationAttribute.init();
+
+            // Parse relation content - this is a simplified version
+            // Real Prisma relations can be quite complex: @relation(fields: [authorId], references: [id])
+            while (!self.isAtEnd() and self.current_token.type != .right_paren) {
+                if (self.current_token.type == .identifier) {
+                    const key = self.current_token.lexeme;
+                    self.advance();
+
+                    if (std.mem.eql(u8, key, "fields") or std.mem.eql(u8, key, "references")) {
+                        // Skip the colon and array contents for now
+                        if (self.match(.colon)) {
+                            // Skip array contents [field1, field2]
+                            if (self.match(.left_bracket)) {
+                                var bracket_depth: i32 = 1;
+                                while (!self.isAtEnd() and bracket_depth > 0) {
+                                    const token = self.current_token;
+                                    self.advance();
+                                    if (token.type == .left_bracket) {
+                                        bracket_depth += 1;
+                                    } else if (token.type == .right_bracket) {
+                                        bracket_depth -= 1;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } else if (self.current_token.type == .string_literal) {
+                    // This might be a relation name like @relation("PostAuthor", ...)
+                    const relation_name = self.current_token.lexeme;
+                    relation.name = types.String{ .value = relation_name[1 .. relation_name.len - 1] }; // Remove quotes
+                    self.advance();
+                } else {
+                    // Skip unknown tokens
+                    self.advance();
+                }
+
+                // Skip commas
+                if (self.match(.comma)) {
+                    // Comma consumed, continue
+                }
+            }
+
+            _ = try self.consume(.right_paren, "Expected ')'");
+            return FieldAttribute.initRelation(self.allocator, relation);
         } else {
             std.log.err("Unknown attribute: {s} at line {d}", .{ attr_name, attr_name_token.line });
             return ParseError.UnknownAttribute;
@@ -532,64 +606,145 @@ test "lexer tokenization" {
     try std.testing.expect(token.type == .left_brace);
 }
 
- test "parse simple model" {
-     const allocator = std.testing.allocator;
+test "parse simple model" {
+    const allocator = std.testing.allocator;
 
-     const source =
-         \\model User {
-         \\  id   Int    @id
-         \\  name String
-         \\  email String @unique
-         \\}
-     ;
+    const source =
+        \\model User {
+        \\  id   Int    @id
+        \\  name String
+        \\  email String @unique
+        \\}
+    ;
 
-     var schema = try parseSchema(allocator, source);
-     defer schema.deinit();
-
-     try std.testing.expect(schema.models.items.len == 1);
-
-     const user_model = &schema.models.items[0];
-     try std.testing.expectEqualStrings("User", user_model.name);
-     try std.testing.expect(user_model.fields.items.len == 3);
-
-     const id_field = &user_model.fields.items[0];
-     try std.testing.expectEqualStrings("id", id_field.name);
-     try std.testing.expect(id_field.type == .int);
-     try std.testing.expect(id_field.hasAttribute(.id));
-
-     const email_field = &user_model.fields.items[2];
-     try std.testing.expectEqualStrings("email", email_field.name);
-     try std.testing.expect(email_field.hasAttribute(.unique));
- }
-
- test "parse model with optional fields and defaults" {
-     const allocator = std.testing.allocator;
-
-     const source =
-         \\model Post {
-         \\  id        Int      @id
-         \\  title     String
-         \\  content   String?
-         \\  published Boolean  @default(false)
-         \\  createdAt DateTime @default(now())
-         \\}
-     ;
-
-     var schema = try parseSchema(allocator, source);
-     defer schema.deinit();
+    var schema = try parseSchema(allocator, source);
+    defer schema.deinit();
 
     try std.testing.expect(schema.models.items.len == 1);
-     const post_model = &schema.models.items[0];
 
-     const content_field = &post_model.fields.items[2];
-     try std.testing.expect(content_field.optional);
+    const user_model = &schema.models.items[0];
+    try std.testing.expectEqualStrings("User", user_model.name);
+    try std.testing.expect(user_model.fields.items.len == 3);
 
-     const published_field = &post_model.fields.items[3];
-     try std.testing.expect(published_field.hasAttribute(.default));
-     const default_val = published_field.getDefaultValue().?;
-     try std.testing.expectEqualStrings("false", default_val);
+    const id_field = &user_model.fields.items[0];
+    try std.testing.expectEqualStrings("id", id_field.name);
+    try std.testing.expect(id_field.type == .int);
+    try std.testing.expect(id_field.hasAttribute(.id));
 
-     const created_field = &post_model.fields.items[4];
-     const created_default = created_field.getDefaultValue().?;
-     try std.testing.expectEqualStrings("now()", created_default);
- }
+    const email_field = &user_model.fields.items[2];
+    try std.testing.expectEqualStrings("email", email_field.name);
+    try std.testing.expect(email_field.hasAttribute(.unique));
+}
+
+test "parse model with optional fields and defaults" {
+    const allocator = std.testing.allocator;
+
+    const source =
+        \\model Post {
+        \\  id        Int      @id
+        \\  title     String
+        \\  content   String?
+        \\  published Boolean  @default(false)
+        \\  createdAt DateTime @default(now())
+        \\}
+    ;
+
+    var schema = try parseSchema(allocator, source);
+    defer schema.deinit();
+
+    try std.testing.expect(schema.models.items.len == 1);
+    const post_model = &schema.models.items[0];
+
+    const content_field = &post_model.fields.items[2];
+    try std.testing.expect(content_field.optional);
+
+    const published_field = &post_model.fields.items[3];
+    try std.testing.expect(published_field.hasAttribute(.default));
+    const default_val = published_field.getDefaultValue().?;
+    try std.testing.expectEqualStrings("false", default_val);
+
+    const created_field = &post_model.fields.items[4];
+    const created_default = created_field.getDefaultValue().?;
+    try std.testing.expectEqualStrings("now()", created_default);
+}
+
+test "parse model with relationships" {
+    const allocator = std.testing.allocator;
+
+    const source =
+        \\model User {
+        \\  id    Int    @id
+        \\  posts Post[]
+        \\  profile Profile?
+        \\}
+        \\
+        \\model Post {
+        \\  id       Int  @id
+        \\  authorId Int
+        \\  author   User @relation(fields: [authorId], references: [id])
+        \\}
+    ;
+
+    var schema = try parseSchema(allocator, source);
+    defer schema.deinit();
+
+    try std.testing.expect(schema.models.items.len == 2);
+
+    const user_model = &schema.models.items[0];
+    try std.testing.expectEqualStrings("User", user_model.name);
+
+    // Check posts field (array relationship)
+    const posts_field = user_model.getField("posts");
+    try std.testing.expect(posts_field != null);
+    try std.testing.expect(posts_field.?.isRelation());
+    try std.testing.expect(posts_field.?.isArrayRelation());
+    try std.testing.expectEqualStrings("Post", posts_field.?.getRelatedModel().?);
+
+    // Check profile field (optional relationship)
+    const profile_field = user_model.getField("profile");
+    try std.testing.expect(profile_field != null);
+    try std.testing.expect(profile_field.?.isRelation());
+    try std.testing.expect(!profile_field.?.isArrayRelation());
+    try std.testing.expect(profile_field.?.optional);
+
+    const post_model = &schema.models.items[1];
+    const author_field = post_model.getField("author");
+    try std.testing.expect(author_field != null);
+    try std.testing.expect(author_field.?.isRelation());
+    try std.testing.expect(author_field.?.hasAttribute(.relation));
+}
+
+test "parse relation attribute" {
+    const allocator = std.testing.allocator;
+
+    const source =
+        \\model Post {
+        \\  id       Int  @id
+        \\  authorId Int
+        \\  author   User @relation(fields: [authorId], references: [id])
+        \\  category Category @relation("PostCategory")
+        \\}
+    ;
+
+    var schema = try parseSchema(allocator, source);
+    defer schema.deinit();
+
+    const post_model = &schema.models.items[0];
+
+    // Test author field with complex relation
+    const author_field = post_model.getField("author");
+    try std.testing.expect(author_field != null);
+    try std.testing.expect(author_field.?.hasAttribute(.relation));
+
+    // Test category field with named relation
+    const category_field = post_model.getField("category");
+    try std.testing.expect(category_field != null);
+    try std.testing.expect(category_field.?.hasAttribute(.relation));
+
+    // Check that the relation attribute is properly stored
+    const relation_attr = category_field.?.getRelationAttribute();
+    try std.testing.expect(relation_attr != null);
+    if (relation_attr.?.name) |name| {
+        try std.testing.expectEqualStrings("PostCategory", name.value);
+    }
+}

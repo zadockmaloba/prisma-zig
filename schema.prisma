@@ -1,0 +1,39 @@
+// Example Prisma schema for testing
+generator client {
+  provider = "zig build test"
+  output   = "./generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = "postgresql://user:password@localhost:5432/mydb"
+}
+
+model User {
+  id        Int      @id
+  email     String   @unique
+  name      String?
+  posts     Post[]
+  profile   Profile?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now())
+}
+
+model Post {
+  id        Int      @id
+  title     String
+  content   String?
+  published Boolean  @default(false)
+  authorId  Int
+  author    User     @relation(fields: [authorId], references: [id])
+  createdAt DateTime @default(now())
+  
+  @@map("posts")
+}
+
+model Profile {
+  id     Int    @id
+  bio    String?
+  userId Int    @unique @map("user_id")
+  user   User   @relation(fields: [userId], references: [id])
+}

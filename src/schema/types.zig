@@ -7,18 +7,36 @@ pub const String = struct {
 };
 
 /// Represents a Prisma field type
-pub const FieldType = enum {
+pub const FieldType = union(enum) {
+    // Primitive types
     string,
     int,
     boolean,
     datetime,
 
+    // Model references
+    model_ref: []const u8, // e.g., "User"
+    model_array: []const u8, // e.g., "Post[]"
+
     /// Parse a field type from a string
     pub fn fromString(type_str: []const u8) ?FieldType {
+        // Check for primitive types first
         if (std.mem.eql(u8, type_str, "String")) return .string;
         if (std.mem.eql(u8, type_str, "Int")) return .int;
         if (std.mem.eql(u8, type_str, "Boolean")) return .boolean;
         if (std.mem.eql(u8, type_str, "DateTime")) return .datetime;
+
+        // Check for array type (ends with [])
+        if (std.mem.endsWith(u8, type_str, "[]")) {
+            const model_name = type_str[0 .. type_str.len - 2];
+            return FieldType{ .model_array = model_name };
+        }
+
+        // Check if it's a valid model reference (starts with uppercase)
+        if (type_str.len > 0 and std.ascii.isUpper(type_str[0])) {
+            return FieldType{ .model_ref = type_str };
+        }
+
         return null;
     }
 
@@ -29,6 +47,8 @@ pub const FieldType = enum {
             .int => "INTEGER",
             .boolean => "BOOLEAN",
             .datetime => "TIMESTAMP",
+            .model_ref => "INTEGER", // Foreign key as integer
+            .model_array => "", // Arrays don't have direct SQL representation (handled via relations)
         };
     }
 
@@ -39,28 +59,74 @@ pub const FieldType = enum {
             .int => "i32",
             .boolean => "bool",
             .datetime => "i64", // Unix timestamp
+            .model_ref => |model_name| model_name, // Use the model name as type
+            .model_array => |model_name| model_name, // Will be handled specially in codegen
+        };
+    }
+
+    /// Check if this field type represents a relationship
+    pub fn isRelation(self: FieldType) bool {
+        return switch (self) {
+            .model_ref, .model_array => true,
+            else => false,
+        };
+    }
+
+    /// Check if this field type represents an array/list relationship
+    pub fn isArray(self: FieldType) bool {
+        return switch (self) {
+            .model_array => true,
+            else => false,
+        };
+    }
+
+    /// Get the referenced model name for relationship fields
+    pub fn getModelName(self: FieldType) ?[]const u8 {
+        return switch (self) {
+            .model_ref => |name| name,
+            .model_array => |name| name,
+            else => null,
         };
     }
 };
 
-/// Represents field attributes like @id, @unique, @default
+/// Represents a @relation attribute with fields and references
+pub const RelationAttribute = struct {
+    name: ?String = null, // Optional relation name
+    fields: ?[]String = null, // [authorId, categoryId]
+    references: ?[]String = null, // [id, id]
+
+    pub fn init() RelationAttribute {
+        return RelationAttribute{};
+    }
+};
+
+/// Represents field attributes like @id, @unique, @default, @relation
 pub const FieldAttribute = union(enum) {
     id,
     unique,
     default: String,
-    map: String, // @map("column_name") 
-    
+    map: String, // @map("column_name")
+    relation: RelationAttribute, // @relation(fields: [authorId], references: [id])
+
     pub fn initDefault(allocator: std.mem.Allocator, val: String) !FieldAttribute {
         _ = allocator;
         return .{
             .default = val,
         };
     }
-    
+
     pub fn initMap(allocator: std.mem.Allocator, map_name: String) !FieldAttribute {
         _ = allocator;
         return .{
             .map = map_name,
+        };
+    }
+
+    pub fn initRelation(allocator: std.mem.Allocator, relation: RelationAttribute) !FieldAttribute {
+        _ = allocator;
+        return .{
+            .relation = relation,
         };
     }
 
@@ -72,6 +138,20 @@ pub const FieldAttribute = union(enum) {
             },
             .default => {
                 if (self.default.heap_allocated) self.default.allocator.?.free(self.default.value);
+            },
+            .relation => |rel| {
+                // Free relation fields if they were allocated
+                if (rel.fields) |fields| {
+                    for (fields) |field| {
+                        if (field.heap_allocated) field.allocator.?.free(field.value);
+                    }
+                    // Note: We'd need to store the allocator in RelationAttribute to free the array itself
+                }
+                if (rel.references) |references| {
+                    for (references) |ref| {
+                        if (ref.heap_allocated) ref.allocator.?.free(ref.value);
+                    }
+                }
             },
             else => {},
         }
@@ -87,9 +167,9 @@ pub const FieldAttribute = union(enum) {
             const value = attr_str[start..end];
             // Remove quotes if present
             if (value.len >= 2 and value[0] == '"' and value[value.len - 1] == '"') {
-                return FieldAttribute{ .default = .{.value = value[1 .. value.len - 1]}};
+                return FieldAttribute{ .default = .{ .value = value[1 .. value.len - 1] } };
             }
-            return FieldAttribute{ .default = .{.value = value} };
+            return FieldAttribute{ .default = .{ .value = value } };
         }
         if (std.mem.startsWith(u8, attr_str, "@map(")) {
             const start = std.mem.indexOf(u8, attr_str, "(").? + 1;
@@ -97,9 +177,14 @@ pub const FieldAttribute = union(enum) {
             const value = attr_str[start..end];
             // Remove quotes
             if (value.len >= 2 and value[0] == '"' and value[value.len - 1] == '"') {
-                return FieldAttribute{ .map = .{.value = value[1 .. value.len - 1] }};
+                return FieldAttribute{ .map = .{ .value = value[1 .. value.len - 1] } };
             }
-            return FieldAttribute{ .map = .{.value = value } };
+            return FieldAttribute{ .map = .{ .value = value } };
+        }
+        if (std.mem.startsWith(u8, attr_str, "@relation(")) {
+            // For now, return a basic relation attribute
+            // Full parsing of fields and references would be more complex
+            return FieldAttribute{ .relation = RelationAttribute.init() };
         }
         return null;
     }
@@ -170,6 +255,29 @@ pub const Field = struct {
     pub fn getDefaultValue(self: *const Field) ?[]const u8 {
         if (self.getAttribute(.default)) |default_attr| {
             return default_attr.default.value;
+        }
+        return null;
+    }
+
+    /// Check if this field represents a relationship
+    pub fn isRelation(self: *const Field) bool {
+        return self.type.isRelation() or self.hasAttribute(.relation);
+    }
+
+    /// Check if this field represents an array relationship (one-to-many)
+    pub fn isArrayRelation(self: *const Field) bool {
+        return self.type.isArray();
+    }
+
+    /// Get the related model name for relationship fields
+    pub fn getRelatedModel(self: *const Field) ?[]const u8 {
+        return self.type.getModelName();
+    }
+
+    /// Get the relation attribute if present
+    pub fn getRelationAttribute(self: *const Field) ?RelationAttribute {
+        if (self.getAttribute(.relation)) |rel_attr| {
+            return rel_attr.relation;
         }
         return null;
     }
@@ -358,25 +466,59 @@ pub const ParseError = error{
 
 // Tests
 test "FieldType.fromString" {
-    try std.testing.expect(FieldType.fromString("String") == .string);
-    try std.testing.expect(FieldType.fromString("Int") == .int);
-    try std.testing.expect(FieldType.fromString("Boolean") == .boolean);
-    try std.testing.expect(FieldType.fromString("DateTime") == .datetime);
+    try std.testing.expect(FieldType.fromString("String").? == .string);
+    try std.testing.expect(FieldType.fromString("Int").? == .int);
+    try std.testing.expect(FieldType.fromString("Boolean").? == .boolean);
+    try std.testing.expect(FieldType.fromString("DateTime").? == .datetime);
     try std.testing.expect(FieldType.fromString("Unknown") == null);
+
+    // Test model references
+    const user_ref = FieldType.fromString("User").?;
+    try std.testing.expect(std.meta.activeTag(user_ref) == .model_ref);
+    try std.testing.expectEqualStrings("User", user_ref.model_ref);
+
+    // Test array types
+    const post_array = FieldType.fromString("Post[]").?;
+    try std.testing.expect(std.meta.activeTag(post_array) == .model_array);
+    try std.testing.expectEqualStrings("Post", post_array.model_array);
 }
 
 test "FieldType.toSqlType" {
-    try std.testing.expectEqualStrings("TEXT", FieldType.string.toSqlType());
-    try std.testing.expectEqualStrings("INTEGER", FieldType.int.toSqlType());
-    try std.testing.expectEqualStrings("BOOLEAN", FieldType.boolean.toSqlType());
-    try std.testing.expectEqualStrings("TIMESTAMP", FieldType.datetime.toSqlType());
+    try std.testing.expectEqualStrings("TEXT", FieldType.toSqlType(.string));
+    try std.testing.expectEqualStrings("INTEGER", FieldType.toSqlType(.int));
+    try std.testing.expectEqualStrings("BOOLEAN", FieldType.toSqlType(.boolean));
+    try std.testing.expectEqualStrings("TIMESTAMP", FieldType.toSqlType(.datetime));
+
+    const user_ref = FieldType{ .model_ref = "User" };
+    try std.testing.expectEqualStrings("INTEGER", user_ref.toSqlType());
 }
 
 test "FieldType.toZigType" {
-    try std.testing.expectEqualStrings("[]const u8", FieldType.string.toZigType());
-    try std.testing.expectEqualStrings("i32", FieldType.int.toZigType());
-    try std.testing.expectEqualStrings("bool", FieldType.boolean.toZigType());
-    try std.testing.expectEqualStrings("i64", FieldType.datetime.toZigType());
+    try std.testing.expectEqualStrings("[]const u8", FieldType.toZigType(.string));
+    try std.testing.expectEqualStrings("i32", FieldType.toZigType(.int));
+    try std.testing.expectEqualStrings("bool", FieldType.toZigType(.boolean));
+    try std.testing.expectEqualStrings("i64", FieldType.toZigType(.datetime));
+
+    const user_ref = FieldType{ .model_ref = "User" };
+    try std.testing.expectEqualStrings("User", user_ref.toZigType());
+}
+
+test "FieldType relationship methods" {
+    const user_ref = FieldType{ .model_ref = "User" };
+    const post_array = FieldType{ .model_array = "Post" };
+    const string_type = FieldType.string;
+
+    try std.testing.expect(user_ref.isRelation());
+    try std.testing.expect(post_array.isRelation());
+    try std.testing.expect(!FieldType.isRelation(string_type));
+
+    try std.testing.expect(!user_ref.isArray());
+    try std.testing.expect(post_array.isArray());
+    try std.testing.expect(!FieldType.isArray(string_type));
+
+    try std.testing.expectEqualStrings("User", user_ref.getModelName().?);
+    try std.testing.expectEqualStrings("Post", post_array.getModelName().?);
+    try std.testing.expect(FieldType.getModelName(string_type) == null);
 }
 
 test "FieldAttribute.fromString" {
