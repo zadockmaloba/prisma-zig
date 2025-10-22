@@ -9,6 +9,7 @@ const FieldAttribute = types.FieldAttribute;
 const ParseError = types.ParseError;
 const GeneratorConfig = types.GeneratorConfig;
 const DatasourceConfig = types.DatasourceConfig;
+const String = types.String;
 
 /// Token types for the lexer
 const TokenType = enum {
@@ -386,25 +387,25 @@ pub const Parser = struct {
         } else if (std.mem.eql(u8, attr_name, "default")) {
             _ = try self.consume(.left_paren, "Expected '('");
 
-            var value: []const u8 = undefined;
+            var value: String = undefined;
             if (self.current_token.type == .string_literal) {
                 const token = self.current_token;
                 self.advance();
                 // Remove quotes
-                value = token.lexeme[1 .. token.lexeme.len - 1];
+                value = .{ .value =  token.lexeme[1 .. token.lexeme.len - 1] };
             } else if (self.current_token.type == .number_literal) {
                 const token = self.current_token;
                 self.advance();
-                value = token.lexeme;
+                value = .{ .value = token.lexeme };
             } else if (self.current_token.type == .identifier) {
                 // Function call like autoincrement(), now(), etc.
                 const token = self.current_token;
                 self.advance();
                 if (self.match(.left_paren)) {
                     _ = try self.consume(.right_paren, "Expected ')'");
-                    value = try std.fmt.allocPrint(self.allocator, "{s}()", .{token.lexeme});
+                    value = .{ .value = try std.fmt.allocPrint(self.allocator, "{s}()", .{token.lexeme}), .heap_allocated = true, .allocator = self.allocator };
                 } else {
-                    value = token.lexeme;
+                    value = .{ .value = token.lexeme };
                 }
             } else {
                 return ParseError.InvalidDefaultValue;
@@ -419,7 +420,7 @@ pub const Parser = struct {
 
             // Remove quotes
             const map_name = map_name_token.lexeme[1 .. map_name_token.lexeme.len - 1];
-            return FieldAttribute.initMap(self.allocator, map_name);
+            return FieldAttribute.initMap(self.allocator, .{ .value = map_name });
         } else {
             std.log.err("Unknown attribute: {s} at line {d}", .{ attr_name, attr_name_token.line });
             return ParseError.UnknownAttribute;
@@ -461,7 +462,7 @@ pub const Parser = struct {
             }
         }
 
-        return GeneratorConfig.init(self.allocator, config.provider, config.output);
+        return config;
     }
 
     fn parseDatasource(self: *Parser) ParseError!DatasourceConfig {
@@ -499,7 +500,7 @@ pub const Parser = struct {
             }
         }
 
-        return DatasourceConfig.init(self.allocator, config.provider, config.url);
+        return config;
     }
 };
 
@@ -531,63 +532,64 @@ test "lexer tokenization" {
     try std.testing.expect(token.type == .left_brace);
 }
 
-test "parse simple model" {
-    const allocator = std.testing.allocator;
+ test "parse simple model" {
+     const allocator = std.testing.allocator;
 
-    const source =
-        \\model User {
-        \\  id   Int    @id
-        \\  name String
-        \\  email String @unique
-        \\}
-    ;
+     const source =
+         \\model User {
+         \\  id   Int    @id
+         \\  name String
+         \\  email String @unique
+         \\}
+     ;
 
-    var schema = try parseSchema(allocator, source);
-    defer schema.deinit();
+     var schema = try parseSchema(allocator, source);
+     defer schema.deinit();
+
+     try std.testing.expect(schema.models.items.len == 1);
+
+     const user_model = &schema.models.items[0];
+     try std.testing.expectEqualStrings("User", user_model.name);
+     try std.testing.expect(user_model.fields.items.len == 3);
+
+     const id_field = &user_model.fields.items[0];
+     try std.testing.expectEqualStrings("id", id_field.name);
+     try std.testing.expect(id_field.type == .int);
+     try std.testing.expect(id_field.hasAttribute(.id));
+
+     const email_field = &user_model.fields.items[2];
+     try std.testing.expectEqualStrings("email", email_field.name);
+     try std.testing.expect(email_field.hasAttribute(.unique));
+ }
+
+ test "parse model with optional fields and defaults" {
+     const allocator = std.testing.allocator;
+
+     const source =
+         \\model Post {
+         \\  id        Int      @id
+         \\  title     String
+         \\  content   String?
+         \\  published Boolean  @default(false)
+         \\  createdAt DateTime @default(now())
+         \\}
+     ;
+
+     var schema = try parseSchema(allocator, source);
+     defer schema.deinit();
 
     try std.testing.expect(schema.models.items.len == 1);
+     const post_model = &schema.models.items[0];
 
-    const user_model = &schema.models.items[0];
-    try std.testing.expectEqualStrings("User", user_model.name);
-    try std.testing.expect(user_model.fields.items.len == 3);
+     const content_field = &post_model.fields.items[2];
+     try std.testing.expect(content_field.optional);
 
-    const id_field = &user_model.fields.items[0];
-    try std.testing.expectEqualStrings("id", id_field.name);
-    try std.testing.expect(id_field.type == .int);
-    try std.testing.expect(id_field.hasAttribute(.id));
+     const published_field = &post_model.fields.items[3];
+     try std.testing.expect(published_field.hasAttribute(.default));
+     const default_val = published_field.getDefaultValue().?;
+     try std.testing.expectEqualStrings("false", default_val);
 
-    const email_field = &user_model.fields.items[2];
-    try std.testing.expectEqualStrings("email", email_field.name);
-    try std.testing.expect(email_field.hasAttribute(.unique));
-}
-
-test "parse model with optional fields and defaults" {
-    const allocator = std.testing.allocator;
-
-    const source =
-        \\model Post {
-        \\  id        Int      @id
-        \\  title     String
-        \\  content   String?
-        \\  published Boolean  @default(false)
-        \\  createdAt DateTime @default(now())
-        \\}
-    ;
-
-    var schema = try parseSchema(allocator, source);
-    defer schema.deinit();
-
-    const post_model = &schema.models.items[0];
-
-    const content_field = &post_model.fields.items[2];
-    try std.testing.expect(content_field.optional);
-
-    const published_field = &post_model.fields.items[3];
-    try std.testing.expect(published_field.hasAttribute(.default));
-    const default_val = published_field.getDefaultValue().?;
-    try std.testing.expectEqualStrings("false", default_val);
-
-    const created_field = &post_model.fields.items[4];
-    const created_default = created_field.getDefaultValue().?;
-    try std.testing.expectEqualStrings("now()", created_default);
-}
+     const created_field = &post_model.fields.items[4];
+     const created_default = created_field.getDefaultValue().?;
+     try std.testing.expectEqualStrings("now()", created_default);
+ }

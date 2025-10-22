@@ -50,25 +50,28 @@ pub const FieldAttribute = union(enum) {
     default: String,
     map: String, // @map("column_name") 
     
-    pub fn initDefault(allocator: std.mem.Allocator, val: []const u8) !FieldAttribute {
+    pub fn initDefault(allocator: std.mem.Allocator, val: String) !FieldAttribute {
+        _ = allocator;
         return .{
-            .default = .{.value = try allocator.dupe(u8, val), .heap_allocated = true, .allocator = allocator,},
+            .default = val,
         };
     }
     
-    pub fn initMap(allocator: std.mem.Allocator, map_name: []const u8) !FieldAttribute {
+    pub fn initMap(allocator: std.mem.Allocator, map_name: String) !FieldAttribute {
+        _ = allocator;
         return .{
-            .map = .{.value = try allocator.dupe(u8, map_name), .heap_allocated = true, .allocator = allocator,},
+            .map = map_name,
         };
     }
 
     pub fn deinit(self: FieldAttribute, allocator: std.mem.Allocator) void {
+        _ = allocator;
         switch (self) {
             .map => {
-                if (self.map.heap_allocated) allocator.free(self.map.value);
+                if (self.map.heap_allocated) self.map.allocator.?.free(self.map.value);
             },
             .default => {
-                if (self.default.heap_allocated) allocator.free(self.default.value);
+                if (self.default.heap_allocated) self.default.allocator.?.free(self.default.value);
             },
             else => {},
         }
@@ -112,17 +115,16 @@ pub const Field = struct {
 
     pub fn init(allocator: std.mem.Allocator, name: []const u8, field_type: FieldType) !Field {
         return Field{
-            .name = try allocator.dupe(u8, name),
+            .name = name,
             .type = field_type,
             .optional = false,
             .allocator = allocator,
-            .attributes = std.ArrayList(FieldAttribute).initCapacity(allocator, 20) catch .empty,
+            .attributes = .empty,
         };
     }
 
     pub fn deinit(self: *Field) void {
         // Free the field name (allocated by allocator.dupe)
-        self.allocator.free(self.name);
         for (self.attributes.items) |attribute| {
             attribute.deinit(self.allocator);
         }
@@ -149,7 +151,7 @@ pub const Field = struct {
     /// Get the database column name (using @map if present, otherwise field name)
     pub fn getColumnName(self: *const Field) []const u8 {
         if (self.getAttribute(.map)) |map_attr| {
-            return map_attr.map;
+            return map_attr.map.value;
         }
         return self.name;
     }
@@ -182,16 +184,16 @@ pub const PrismaModel = struct {
 
     pub fn init(allocator: std.mem.Allocator, name: []const u8) !PrismaModel {
         return PrismaModel{
-            .name = try allocator.dupe(u8, name),
+            .name = name,
             .allocator = allocator,
-            .fields = std.ArrayList(Field).initCapacity(allocator, 20) catch .empty,
+            .fields = .empty,
             .table_name = null,
         };
     }
 
     pub fn deinit(self: *PrismaModel) void {
         // Free the model name (allocated by allocator.dupe)
-        self.allocator.free(self.name);
+        //self.allocator.free(self.name);
 
         for (self.fields.items) |*field| {
             field.deinit();
@@ -238,16 +240,16 @@ pub const PrismaModel = struct {
         return null;
     }
 
-    /// Get all unique fields
-    pub fn getUniqueFields(self: *const PrismaModel, allocator: std.mem.Allocator) !std.ArrayList(*const Field) {
-        var unique_fields = std.ArrayList(*const Field).initCapacity(allocator, 20) catch .empty;
-        for (self.fields.items) |*field| {
-            if (field.isUnique()) {
-                try unique_fields.append(self.allocator, field);
-            }
-        }
-        return unique_fields;
-    }
+    // Get all unique fields
+    // pub fn getUniqueFields(self: *const PrismaModel, allocator: std.mem.Allocator) !std.ArrayList(*const Field) {
+    //     var unique_fields = std.ArrayList(*const Field).initCapacity(allocator, 20) catch .empty;
+    //     for (self.fields.items) |*field| {
+    //         if (field.isUnique()) {
+    //             try unique_fields.append(self.allocator, field);
+    //         }
+    //     }
+    //     return unique_fields;
+    // }
 };
 
 /// Represents the entire Prisma schema
@@ -260,7 +262,7 @@ pub const Schema = struct {
     pub fn init(allocator: std.mem.Allocator) Schema {
         return Schema{
             .allocator = allocator,
-            .models = std.ArrayList(PrismaModel).initCapacity(allocator, 20) catch .empty,
+            .models = .empty,
             .generator = null,
             .datasource = null,
         };
@@ -309,14 +311,15 @@ pub const GeneratorConfig = struct {
     pub fn init(allocator: std.mem.Allocator, provider: []const u8, output: []const u8) !GeneratorConfig {
         return .{
             .allocator = allocator,
-            .provider = try allocator.dupe(u8, provider),
-            .output = try allocator.dupe(u8, output),
+            .provider = provider, //try allocator.dupe(u8, provider),
+            .output = output, //try allocator.dupe(u8, output),
         };
     }
 
     pub fn deinit(self: *GeneratorConfig) void {
-        self.allocator.free(self.provider);
-        self.allocator.free(self.output);
+        _ = self;
+        //self.allocator.free(self.provider);
+        //self.allocator.free(self.output);
     }
 };
 
@@ -329,14 +332,15 @@ pub const DatasourceConfig = struct {
     pub fn init(allocator: std.mem.Allocator, provider: []const u8, url: []const u8) !DatasourceConfig {
         return .{
             .allocator = allocator,
-            .provider = try allocator.dupe(u8, provider),
-            .url = try allocator.dupe(u8, url),
+            .provider = provider, //try allocator.dupe(u8, provider),
+            .url = url, //try allocator.dupe(u8, url),
         };
     }
 
     pub fn deinit(self: *DatasourceConfig) void {
-        self.allocator.free(self.provider);
-        self.allocator.free(self.url);
+        _ = self;
+        //self.allocator.free(self.provider);
+        //self.allocator.free(self.url);
     }
 };
 
