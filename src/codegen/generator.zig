@@ -37,13 +37,12 @@ pub const Generator = struct {
     /// Generate complete client code for all models in the schema
     pub fn generateClient(self: *Generator) CodeGenError![]u8 {
         // Generate file header
-        var output = self.output;
         try self.generateHeader();
 
         // Generate model structs
         for (self.schema.models.items) |*model| {
             try self.generateModelStruct(model);
-            try output.append(self.allocator, '\n');
+            try self.output.append(self.allocator, '\n');
         }
 
         // Generate where clause types
@@ -57,7 +56,7 @@ pub const Generator = struct {
             try self.generateModelOperations(model);
         }
 
-        return output.toOwnedSlice(self.allocator);
+        return self.output.toOwnedSlice(self.allocator);
     }
 
     /// Generate file imports and basic setup
@@ -79,9 +78,8 @@ pub const Generator = struct {
     /// Generate a Zig struct for a Prisma model
     fn generateModelStruct(self: *Generator, model: *const PrismaModel) CodeGenError!void {
         // Generate struct comment
-        var output = self.output;
-        try output.writer(self.allocator).print("/// {s} model struct\n", .{model.name});
-        try output.writer(self.allocator).print("pub const {s} = struct {{\n", .{model.name});
+        try self.output.writer(self.allocator).print("/// {s} model struct\n", .{model.name});
+        try self.output.writer(self.allocator).print("pub const {s} = struct {{\n", .{model.name});
 
         // Generate fields
         for (model.fields.items) |*field| {
@@ -95,34 +93,33 @@ pub const Generator = struct {
 
             // Add field comment with database column info
             const column_name = field.getColumnName();
-            try output.writer(self.allocator).print("    /// Database column: {s}\n", .{column_name});
+            try self.output.writer(self.allocator).print("    /// Database column: {s}\n", .{column_name});
 
             // Add constraint information
             if (field.isPrimaryKey()) {
-                try output.appendSlice(self.allocator, "    /// Primary key\n");
+                try self.output.appendSlice(self.allocator, "    /// Primary key\n");
             }
             if (field.isUnique() and !field.isPrimaryKey()) {
-                try output.appendSlice(self.allocator, "    /// Unique constraint\n");
+                try self.output.appendSlice(self.allocator, "    /// Unique constraint\n");
             }
             if (field.getDefaultValue()) |default_val| {
-                try output.writer(self.allocator).print("    /// Default: {s}\n", .{default_val});
+                try self.output.writer(self.allocator).print("    /// Default: {s}\n", .{default_val});
             }
 
-            try output.writer(self.allocator).print("    {s}: {s}{s},\n", .{ field.name, optional_marker, zig_type });
+            try self.output.writer(self.allocator).print("    {s}: {s}{s},\n", .{ field.name, optional_marker, zig_type });
         }
 
         // Generate helper methods
         try self.generateModelMethods(model);
 
-        try output.appendSlice(self.allocator, "};\n");
+        try self.output.appendSlice(self.allocator, "};\n");
     }
 
     /// Generate helper methods for a model struct
     fn generateModelMethods(self: *Generator, model: *const PrismaModel) CodeGenError!void {
         // Generate init method
-        var output = self.output;
-        try output.appendSlice(self.allocator, "\n    /// Initialize a new instance\n");
-        try output.writer(self.allocator).print("    pub fn init(", .{});
+        try self.output.appendSlice(self.allocator, "\n    /// Initialize a new instance\n");
+        try self.output.writer(self.allocator).print("    pub fn init(", .{});
 
         // Add required fields as parameters
         var first = true;
@@ -131,13 +128,13 @@ pub const Generator = struct {
             if (field.type.isRelation() or field.optional or field.getDefaultValue() != null) {
                 continue;
             }
-            if (!first) try output.appendSlice(self.allocator, ", ");
+            if (!first) try self.output.appendSlice(self.allocator, ", ");
             first = false;
-            try output.writer(self.allocator).print("{s}: {s}", .{ field.name, field.type.toZigType() });
+            try self.output.writer(self.allocator).print("{s}: {s}", .{ field.name, field.type.toZigType() });
         }
 
-        try output.writer(self.allocator).print(") {s} {{\n", .{model.name});
-        try output.writer(self.allocator).print("        return {s}{{\n", .{model.name});
+        try self.output.writer(self.allocator).print(") {s} {{\n", .{model.name});
+        try self.output.writer(self.allocator).print("        return {s}{{\n", .{model.name});
 
         // Initialize all fields
         for (model.fields.items) |*field| {
@@ -145,7 +142,7 @@ pub const Generator = struct {
                 // Skip relationship fields - they'll be loaded separately
                 continue;
             } else if (!field.optional and field.getDefaultValue() == null) {
-                try output.writer(self.allocator).print("            .{s} = {s},\n", .{ field.name, field.name });
+                try self.output.writer(self.allocator).print("            .{s} = {s},\n", .{ field.name, field.name });
             } else if (field.getDefaultValue()) |default_val| {
                 // Handle different default value types
                 const default_expr = if (std.mem.eql(u8, default_val, "now()"))
@@ -157,14 +154,14 @@ pub const Generator = struct {
                 else
                     default_val;
 
-                try output.writer(self.allocator).print("            .{s} = {s},\n", .{ field.name, default_expr });
+                try self.output.writer(self.allocator).print("            .{s} = {s},\n", .{ field.name, default_expr });
                 if (field.type == .string) self.allocator.free(default_expr);
             } else {
-                try output.writer(self.allocator).print("            .{s} = null,\n", .{field.name});
+                try self.output.writer(self.allocator).print("            .{s} = null,\n", .{field.name});
             }
         }
 
-        try output.appendSlice(self.allocator, "        };\n    }\n");
+        try self.output.appendSlice(self.allocator, "        };\n    }\n");
 
         // Generate toSql method for CREATE operations
         try self.generateToSqlMethod(model);
@@ -172,7 +169,7 @@ pub const Generator = struct {
 
     /// Generate toSql method for converting struct to SQL values
     fn generateToSqlMethod(self: *Generator, model: *const PrismaModel) CodeGenError!void {
-        var output = self.output;
+        var output = &self.output;
 
         try output.appendSlice(self.allocator, "\n    /// Convert to SQL values for INSERT/UPDATE\n");
         try output.appendSlice(self.allocator, "    pub fn toSqlValues(self: *const @This(), allocator: std.mem.Allocator) ![][]const u8 {\n");
@@ -213,7 +210,7 @@ pub const Generator = struct {
 
     /// Generate WHERE clause types for type-safe querying
     fn generateWhereTypes(self: *Generator) CodeGenError!void {
-        var output = self.output;
+        var output = &self.output;
 
         try output.appendSlice(self.allocator, "/// String filter options\n");
         try output.appendSlice(self.allocator, "pub const StringFilter = struct {\n");
@@ -249,7 +246,7 @@ pub const Generator = struct {
 
     /// Generate the main client struct
     fn generateClientStruct(self: *Generator) CodeGenError!void {
-        var output = self.output;
+        var output = &self.output;
         try output.appendSlice(self.allocator, "/// Main Prisma client\n");
         try output.appendSlice(self.allocator, "pub const PrismaClient = struct {\n");
         try output.appendSlice(self.allocator, "    allocator: std.mem.Allocator,\n");
@@ -281,7 +278,7 @@ pub const Generator = struct {
 
     /// Generate CRUD operations for a specific model
     fn generateModelOperations(self: *Generator, model: *const PrismaModel) CodeGenError!void {
-        var output = self.output;
+        var output = &self.output;
         try output.writer(self.allocator).print("/// CRUD operations for {s} model\n", .{model.name});
         try output.writer(self.allocator).print("pub const {s}Operations = struct {{\n", .{model.name});
         try output.appendSlice(self.allocator, "    allocator: std.mem.Allocator,\n");
@@ -316,7 +313,7 @@ pub const Generator = struct {
 
     /// Generate WHERE type for a specific model
     fn generateModelWhereType(self: *Generator, model: *const PrismaModel) CodeGenError!void {
-        var output = self.output;
+        var output = &self.output;
 
         try output.writer(self.allocator).print("    pub const {s}Where = struct {{\n", .{model.name});
 
@@ -344,7 +341,7 @@ pub const Generator = struct {
     fn generateCreateOperation(self: *Generator, model: *const PrismaModel) CodeGenError!void {
         const table_name = try model.getTableName(self.allocator);
         defer self.allocator.free(table_name);
-        var output = self.output;
+        var output = &self.output;
 
         try output.writer(self.allocator).print("    /// Create a new {s} record\n", .{model.name});
         try output.writer(self.allocator).print("    pub fn create(self: *@This(), data: {s}) !{s} {{\n", .{ model.name, model.name });
@@ -383,7 +380,7 @@ pub const Generator = struct {
 
     /// Generate FIND_MANY operation
     fn generateFindManyOperation(self: *Generator, model: *const PrismaModel) CodeGenError!void {
-        var output = self.output;
+        var output = &self.output;
         const table_name = try model.getTableName(self.allocator);
         defer self.allocator.free(table_name);
 
@@ -412,7 +409,7 @@ pub const Generator = struct {
 
     /// Generate FIND_UNIQUE operation
     fn generateFindUniqueOperation(self: *Generator, model: *const PrismaModel) CodeGenError!void {
-        var output = self.output;
+        var output = &self.output;
 
         try output.writer(self.allocator).print("    /// Find a unique {s} record\n", .{model.name});
         try output.writer(self.allocator).print("    pub fn findUnique(self: *@This(), options: struct {{ where: {s}Where }}) !?{s} {{\n", .{ model.name, model.name });
@@ -426,7 +423,7 @@ pub const Generator = struct {
 
     /// Generate UPDATE operation
     fn generateUpdateOperation(self: *Generator, model: *const PrismaModel) CodeGenError!void {
-        var output = self.output;
+        var output = &self.output;
 
         try output.writer(self.allocator).print("    /// Update a {s} record\n", .{model.name});
         try output.writer(self.allocator).print("    pub fn update(self: *@This(), options: struct {{ where: {s}Where, data: {s} }}) !{s} {{\n", .{ model.name, model.name, model.name });
@@ -440,7 +437,7 @@ pub const Generator = struct {
 
     /// Generate DELETE operation
     fn generateDeleteOperation(self: *Generator, model: *const PrismaModel) CodeGenError!void {
-        var output = self.output;
+        var output = &self.output;
 
         try output.writer(self.allocator).print("    /// Delete a {s} record\n", .{model.name});
         try output.writer(self.allocator).print("    pub fn delete(self: *@This(), options: struct {{ where: {s}Where }}) !void {{\n", .{model.name});
