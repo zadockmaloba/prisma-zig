@@ -394,6 +394,7 @@ pub const Generator = struct {
 
         try output.appendSlice(self.allocator, "        if (options.where) |where_clause| {\n");
         try output.appendSlice(self.allocator, "            // TODO: Build WHERE clause from where_clause\n");
+        try output.appendSlice(self.allocator, "            _ = where_clause;\n");
         try output.appendSlice(self.allocator, "        }\n");
 
         try output.appendSlice(self.allocator, "        const query = try query_builder.build();\n");
@@ -429,7 +430,6 @@ pub const Generator = struct {
         try output.writer(self.allocator).print("    pub fn update(self: *@This(), options: struct {{ where: {s}Where, data: {s} }}) !{s} {{\n", .{ model.name, model.name, model.name });
 
         try output.appendSlice(self.allocator, "        // TODO: Implement update logic\n");
-        try output.appendSlice(self.allocator, "        _ = options;\n");
         try output.appendSlice(self.allocator, "        _ = self;\n");
         try output.appendSlice(self.allocator, "        return options.data; // Placeholder\n");
         try output.appendSlice(self.allocator, "    }\n\n");
