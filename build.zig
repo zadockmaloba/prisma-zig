@@ -124,8 +124,13 @@ pub fn build(b: *std.Build) void {
 
     // Make sure the codegen runs before the install step so generated sources are present
     const codegen_run = b.addRunArtifact(codegen_runner);
-    // _ = codegen_run;
-    b.getInstallStep().dependOn(&codegen_run.step);
+
+    // Initialize the generated client directory as a proper Zig package
+    const zig_init_cmd = b.addSystemCommand(&.{ "zig", "init" });
+    zig_init_cmd.setCwd(b.path("generated_client"));
+    zig_init_cmd.step.dependOn(&codegen_run.step);
+
+    b.getInstallStep().dependOn(&zig_init_cmd.step);
     // --- end codegen runner ---
 
     // This creates a top level step. Top level steps have a name and can be

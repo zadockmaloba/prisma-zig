@@ -35,7 +35,7 @@ pub fn main() !void {
     const cwd = std.fs.cwd();
     try cwd.makePath("generated_client/src");
 
-    const out_path = "generated_client/src/generated_client.zig";
+    const out_path = "generated_client/src/main.zig";
     const out_file = cwd.createFile(out_path, .{ .truncate = true }) catch |err| {
         std.debug.print("codegen: Failed to create {s}: {any}\n", .{ out_path, err });
         return err;
