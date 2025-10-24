@@ -20,7 +20,7 @@ pub fn build(b: *std.Build) void {
     // of this build script using `b.option()`. All defined flags (including
     // target and optimize options) will be listed when running `zig build --help`
     // in this directory.
-    
+
     const postgres = b.dependency("libpq", .{
         .target = target,
         .optimize = optimize,
@@ -107,6 +107,26 @@ pub fn build(b: *std.Build) void {
     // step). By default the install prefix is `zig-out/` but can be overridden
     // by passing `--prefix` or `-p`.
     b.installArtifact(exe);
+
+    // --- Code generation runner ---
+    // Compile a small runner that executes the schema code generator at build-time.
+    const codegen_runner = b.addExecutable(.{
+        .name = "prisma_zig_codegen",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/codegen_runner.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "prisma_zig", .module = mod },
+            },
+        }),
+    });
+
+    // Make sure the codegen runs before the install step so generated sources are present
+    const codegen_run = b.addRunArtifact(codegen_runner);
+    // _ = codegen_run;
+    b.getInstallStep().dependOn(&codegen_run.step);
+    // --- end codegen runner ---
 
     // This creates a top level step. Top level steps have a name and can be
     // invoked by name when running `zig build` (e.g. `zig build run`).
