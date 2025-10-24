@@ -316,16 +316,16 @@ pub const PrismaModel = struct {
     }
 
     /// Get the database table name (using @@map if present, otherwise lowercase model name)
-    pub fn getTableName(self: *const PrismaModel, allocator: std.mem.Allocator) ![]const u8 {
+    pub fn getTableName(self: *const PrismaModel, allocator: std.mem.Allocator) !String {
         if (self.table_name) |table_name| {
-            return table_name;
+            return .{ .value = table_name };
         }
         // Convert to lowercase
         const lowercase = try allocator.alloc(u8, self.name.len);
         for (self.name, 0..) |c, i| {
             lowercase[i] = std.ascii.toLower(c);
         }
-        return lowercase;
+        return .{ .value =  lowercase, .heap_allocated = true, .allocator = allocator };
     }
 
     /// Find a field by name

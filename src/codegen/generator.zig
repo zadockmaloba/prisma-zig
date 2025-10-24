@@ -340,7 +340,7 @@ pub const Generator = struct {
     /// Generate CREATE operation
     fn generateCreateOperation(self: *Generator, model: *const PrismaModel) CodeGenError!void {
         const table_name = try model.getTableName(self.allocator);
-        defer self.allocator.free(table_name);
+        defer if(table_name.heap_allocated) self.allocator.free(table_name.value);
         var output = &self.output;
 
         try output.writer(self.allocator).print("    /// Create a new {s} record\n", .{model.name});
@@ -365,7 +365,7 @@ pub const Generator = struct {
         try output.appendSlice(self.allocator, "        }\n");
 
         try output.writer(self.allocator).print("        const query = try std.fmt.allocPrint(self.allocator, \n", .{});
-        try output.writer(self.allocator).print("            \"INSERT INTO {s} ({{s}}) VALUES ({{s}}) RETURNING *\",\n", .{table_name});
+        try output.writer(self.allocator).print("            \"INSERT INTO {s} ({{s}}) VALUES ({{s}}) RETURNING *\",\n", .{table_name.value});
         try output.appendSlice(self.allocator, "            .{ std.mem.join(self.allocator, \", \", &columns) catch \"\", std.mem.join(self.allocator, \", \", values) catch \"\" }\n");
         try output.appendSlice(self.allocator, "        );\n");
         try output.appendSlice(self.allocator, "        defer self.allocator.free(query);\n");
@@ -382,15 +382,15 @@ pub const Generator = struct {
     fn generateFindManyOperation(self: *Generator, model: *const PrismaModel) CodeGenError!void {
         var output = &self.output;
         const table_name = try model.getTableName(self.allocator);
-        defer self.allocator.free(table_name);
-
+        defer if(table_name.heap_allocated) self.allocator.free(table_name.value);
+        
         try output.writer(self.allocator).print("    /// Find multiple {s} records\n", .{model.name});
         try output.writer(self.allocator).print("    pub fn findMany(self: *@This(), options: struct {{ where: ?{s}Where = null }}) ![]@This() {{\n", .{model.name});
 
         try output.writer(self.allocator).print("        var query_builder = QueryBuilder.init(self.allocator);\n", .{});
         try output.appendSlice(self.allocator, "        defer query_builder.deinit();\n");
 
-        try output.writer(self.allocator).print("        try query_builder.select(\"*\").from(\"{s}\");\n", .{table_name});
+        try output.writer(self.allocator).print("        try query_builder.select(\"*\").from(\"{s}\");\n", .{table_name.value});
 
         try output.appendSlice(self.allocator, "        if (options.where) |where_clause| {\n");
         try output.appendSlice(self.allocator, "            // TODO: Build WHERE clause from where_clause\n");
