@@ -237,7 +237,7 @@ fn generateClient(allocator: std.mem.Allocator) !void {
     };
 
     std.debug.print("✓ Generated {} bytes of Zig client code\n", .{generated_code.len});
-    std.debug.print("✓ Client code written to src/root.zig\n", .{});
+    std.debug.print("✓ Client code written to {s}\n", .{root_file});
 }
 
 fn validateSchema(allocator: std.mem.Allocator) !void {
