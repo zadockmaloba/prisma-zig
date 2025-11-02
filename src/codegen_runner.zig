@@ -33,9 +33,18 @@ pub fn main() !void {
 
     // Ensure target directory exists: generated_client/src
     const cwd = std.fs.cwd();
-    try cwd.makePath("generated_client/src");
+    const root_dir = if (schema.generator) |gen_obj| gen_obj.output else {
+        std.log.err("codegen: No generator output path specified in schema.prisma\n", .{});
+        return error.NoGeneratorOutputPath;
+    };
+    try cwd.makePath(root_dir);
 
-    const out_path = "generated_client/src/main.zig";
+    const out_path = if (schema.generator) |gen_obj| try std.mem.concat(allocator, u8, &.{ gen_obj.output, "/main.zig" }) else {
+        std.log.err("codegen: No generator output path specified in schema.prisma\n", .{});
+        return error.NoGeneratorOutputPath;
+    };
+    defer allocator.free(out_path);
+
     const out_file = cwd.createFile(out_path, .{ .truncate = true }) catch |err| {
         std.debug.print("codegen: Failed to create {s}: {any}\n", .{ out_path, err });
         return err;
