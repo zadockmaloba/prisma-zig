@@ -3,7 +3,7 @@
 services:
 
   test-postgres-db:
-    container_name: test-postgres-db
+    container_name: demo-1-postgres-db
     image: postgres
     restart: always
     shm_size: 128mb
@@ -17,13 +17,13 @@ services:
       - app-network
 
   test-postgres-adminer:
-    container_name: test-postgres-adminer
+    container_name: demo-1-postgres-adminer
     image: adminer
     restart: always
     ports:
       - "127.0.0.1:1234:8080"
     depends_on:
-      - test-postgres-db
+      - demo-1-postgres-db
     networks:
       - app-network
 

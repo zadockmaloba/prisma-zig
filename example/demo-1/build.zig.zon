@@ -1,0 +1,23 @@
+.{
+    .name = .demo_1,
+    .version = "0.0.0",
+    .fingerprint = 0x954ff6b0248c5b0f, // Changing this has security and trust implications.
+    .minimum_zig_version = "0.15.2",
+    .dependencies = .{
+        .libpq_zig = .{
+            .url = "https://github.com/zadockmaloba/libpq-zig/archive/refs/tags/0.1.0.zip",
+            .hash = "libpq_zig-0.1.0-sTETDXzxAADQNL2BvK83zl0cQKiElg1kjUHJcURENgIH",
+        },
+        .prisma_zig = .{
+            .path = "../..",
+        },
+    },
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+        // For example...
+        //"LICENSE",
+        //"README.md",
+    },
+}
