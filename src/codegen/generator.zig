@@ -63,7 +63,7 @@ pub const Generator = struct {
     fn generateHeader(self: *Generator) CodeGenError!void {
         const header =
             \\const std = @import("std");
-            \\const psql = @import("../db/psql.zig");
+            \\const psql = @import("libpq_zig");
             \\
             \\const Connection = psql.Connection;
             \\const QueryBuilder = psql.QueryBuilder;

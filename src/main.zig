@@ -1,6 +1,6 @@
 const std = @import("std");
 const prisma_zig = @import("prisma_zig");
-const pq = @import("db/psql.zig");
+const pq = @import("libpq_zig");
 const libpq = @cImport({
     @cInclude("libpq-fe.h");
 });
@@ -325,7 +325,6 @@ pub fn main() !void {
 }
 
 test {
-    std.testing.refAllDecls(@This());
     std.testing.refAllDecls(parser);
     std.testing.refAllDecls(generator);
 }
@@ -347,40 +346,4 @@ test "fuzz example" {
         }
     };
     try std.testing.fuzz(Context{}, Context.testOne, .{});
-}
-
-test "simple libpq connection" {
-    const db_host = getDbHost();
-    const connection_string = std.fmt.allocPrint(std.testing.allocator, "postgresql://postgres:postgres@{s}:5432", .{db_host}) catch "postgresql://postgres:postgres@localhost:5432";
-    defer std.testing.allocator.free(connection_string);
-
-    const conn = libpq.PQconnectdb(connection_string.ptr);
-    defer libpq.PQfinish(conn);
-
-    if (libpq.PQstatus(conn) != libpq.CONNECTION_OK) {
-        std.debug.print("Error: {s} \n", .{libpq.PQerrorMessage(conn)});
-        return;
-    }
-
-    std.debug.print("Connected to the server\n", .{});
-}
-
-test "libpq wrapper API" {
-    var gpa = std.heap.GeneralPurposeAllocator(.{
-        .thread_safe = true,
-    }){};
-    defer std.debug.assert(gpa.deinit() == .ok);
-
-    const allocator = gpa.allocator();
-
-    var conn = pq.Connection.init(allocator);
-    defer conn.deinit();
-
-    const db_host = getDbHost();
-    const connection_string = std.fmt.allocPrint(allocator, "postgresql://postgres:postgres@{s}:5432", .{db_host}) catch "postgresql://postgres:postgres@localhost:5432";
-    defer allocator.free(connection_string);
-
-    try conn.connect(connection_string);
-
-    std.debug.print("PSQL Server version: {} \n", .{conn.serverVersion()});
 }

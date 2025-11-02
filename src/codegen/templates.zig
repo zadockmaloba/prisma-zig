@@ -5,7 +5,7 @@ pub const Templates = struct {
     /// Header template for generated client files
     pub const file_header =
         \\const std = @import("std");
-        \\const psql = @import("../db/psql.zig");
+        \\const psql = @import("libpq_zig");
         \\
         \\const Connection = psql.Connection;
         \\const QueryBuilder = psql.QueryBuilder;
