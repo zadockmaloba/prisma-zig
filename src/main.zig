@@ -297,12 +297,30 @@ fn migrate(allocator: std.mem.Allocator) !void {
         return;
     }
 
-    // Read DATABASE_URL from environment or .env file
-    const db_url = getDatabaseUrl(allocator) catch {
-        std.debug.print("✗ DATABASE_URL not found. Please set it in your environment or .env file.\n", .{});
+    // Read and parse schema to get database URL
+    const schema_content = std.fs.cwd().readFileAlloc(allocator, "schema.prisma", 1024 * 1024) catch |err| switch (err) {
+        error.FileNotFound => {
+            std.debug.print("✗ schema.prisma not found. Run 'prisma-zig init' first.\n", .{});
+            return;
+        },
+        else => {
+            std.debug.print("✗ Failed to read schema.prisma: {}\n", .{err});
+            return;
+        },
+    };
+    defer allocator.free(schema_content);
+
+    var schema = parser.parseSchema(allocator, schema_content) catch |err| {
+        std.debug.print("✗ Failed to parse schema: {}\n", .{err});
         return;
     };
-    defer allocator.free(db_url);
+    defer schema.deinit();
+
+    const db_url = if (schema.datasource) |ds| ds.url else {
+        std.debug.print("✗ No datasource found in schema.prisma. Please add a datasource block.\n", .{});
+        return;
+    };
+    _ = db_url;
 
     std.debug.print("✓ Connecting to database...\n", .{});
 
@@ -358,23 +376,17 @@ fn migrateDev(allocator: std.mem.Allocator, args: [][:0]u8) !void {
     };
     defer allocator.free(schema_content);
 
-    // Parse the schema to understand the models
     var schema = parser.parseSchema(allocator, schema_content) catch |err| {
         std.debug.print("✗ Failed to parse schema: {}\n", .{err});
         return;
     };
     defer schema.deinit();
 
-    std.debug.print("✓ Schema parsed successfully\n", .{});
-
-    // Create migrations directory if it doesn't exist
-    std.fs.cwd().makeDir("migrations") catch |err| switch (err) {
-        error.PathAlreadyExists => {},
-        else => {
-            std.debug.print("✗ Failed to create migrations directory: {}\n", .{err});
-            return;
-        },
+    const db_url = if (schema.datasource) |ds| ds.url else {
+        std.debug.print("✗ No datasource found in schema.prisma. Please add a datasource block.\n", .{});
+        return;
     };
+    _ = db_url;
 
     // Generate timestamp for migration file
     const timestamp = std.time.timestamp();
@@ -398,14 +410,6 @@ fn migrateDev(allocator: std.mem.Allocator, args: [][:0]u8) !void {
     };
 
     std.debug.print("✓ Generated migration: {s}\n", .{migration_filename});
-
-    // Read DATABASE_URL
-    const db_url = getDatabaseUrl(allocator) catch {
-        std.debug.print("✗ DATABASE_URL not found. Please set it in your environment or .env file.\n", .{});
-        std.debug.print("  Migration file created but not applied.\n", .{});
-        return;
-    };
-    defer allocator.free(db_url);
 
     std.debug.print("✓ Connecting to database...\n", .{});
 
@@ -544,20 +548,6 @@ fn dbPull(allocator: std.mem.Allocator, args: [][:0]u8) !void {
         }
     }
 
-    // Read DATABASE_URL
-    const db_url = getDatabaseUrl(allocator) catch {
-        std.debug.print("✗ DATABASE_URL not found. Please set it in your environment or .env file.\n", .{});
-        return;
-    };
-    defer allocator.free(db_url);
-
-    std.debug.print("✓ Connecting to database...\n", .{});
-
-    // TODO: Implement actual database introspection
-    // For now, we'll simulate the process and generate a basic schema
-    std.debug.print("✓ Database connection established\n", .{});
-    std.debug.print("✓ Introspecting database schema...\n", .{});
-
     // Check if schema.prisma exists and warn about overwriting
     std.fs.cwd().access("schema.prisma", .{}) catch {
         if (!force_overwrite) {
@@ -629,12 +619,12 @@ fn dbPush(allocator: std.mem.Allocator, args: [][:0]u8) !void {
 
     std.debug.print("✓ Schema parsed successfully\n", .{});
 
-    // Read DATABASE_URL
-    const db_url = getDatabaseUrl(allocator) catch {
-        std.debug.print("✗ DATABASE_URL not found. Please set it in your environment or .env file.\n", .{});
+    // Get database URL from schema datasource
+    const db_url = if (schema.datasource) |ds| ds.url else {
+        std.debug.print("✗ No datasource found in schema.prisma. Please add a datasource block.\n", .{});
         return;
     };
-    defer allocator.free(db_url);
+    _ = db_url;
 
     std.debug.print("✓ Connecting to database...\n", .{});
 
