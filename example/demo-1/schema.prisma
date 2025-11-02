@@ -1,7 +1,7 @@
 // Example Prisma schema for testing
 generator client {
   provider = "zig build test"
-  output   = "./generated/client"
+  output   = "./src/prisma_test.zig"
 }
 
 datasource db {

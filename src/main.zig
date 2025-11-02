@@ -203,29 +203,13 @@ fn generateClient(allocator: std.mem.Allocator) !void {
     };
     defer allocator.free(generated_code);
 
-    const cwd = std.fs.cwd();
-    const root_dir = if (schema.generator) |gen_obj| gen_obj.output else {
+    const file_dir = if (schema.generator) |gen_obj| gen_obj.output else {
         std.log.err("codegen: No generator output path specified in schema.prisma\n", .{});
         return error.NoGeneratorOutputPath;
     };
 
-    const src_dir = try std.mem.concat(allocator, u8, &.{ root_dir, "/src" });
-    defer allocator.free(src_dir);
-
-    const root_file = try std.mem.concat(allocator, u8, &.{ root_dir, "/src/root.zig" });
-    defer allocator.free(root_file);
-
-    // Create output directory if it doesn't exist
-    cwd.makePath(src_dir) catch |err| switch (err) {
-        error.PathAlreadyExists => {}, // Directory already exists, that's fine
-        else => {
-            std.debug.print("✗ Failed to create src directory: {}\n", .{err});
-            return;
-        },
-    };
-
     // Write generated code to file
-    const output_file = std.fs.cwd().createFile(root_file, .{}) catch |err| {
+    const output_file = std.fs.cwd().createFile(file_dir, .{}) catch |err| {
         std.debug.print("✗ Failed to create output file: {}\n", .{err});
         return;
     };
@@ -237,7 +221,7 @@ fn generateClient(allocator: std.mem.Allocator) !void {
     };
 
     std.debug.print("✓ Generated {} bytes of Zig client code\n", .{generated_code.len});
-    std.debug.print("✓ Client code written to {s}\n", .{root_file});
+    std.debug.print("✓ Client code written to {s}\n", .{file_dir});
 }
 
 fn validateSchema(allocator: std.mem.Allocator) !void {
