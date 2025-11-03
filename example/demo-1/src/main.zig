@@ -1,4 +1,5 @@
 const std = @import("std");
+const prisma = @import("prisma_test.zig");
 
 pub fn main() !void {
     // Prints to stderr, ignoring potential errors.
