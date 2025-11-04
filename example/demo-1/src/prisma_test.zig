@@ -1,9 +1,9 @@
 const std = @import("std");
 const psql = @import("libpq_zig");
 
-const Connection = psql.Connection;
-const QueryBuilder = psql.QueryBuilder;
-const ResultSet = psql.ResultSet;
+pub const Connection = psql.Connection;
+pub const QueryBuilder = psql.QueryBuilder;
+pub const ResultSet = psql.ResultSet;
 
 /// Generated Prisma client for type-safe database operations
 /// User model struct
@@ -36,33 +36,17 @@ pub const User = struct {
 
     /// Convert to SQL values for INSERT/UPDATE
     pub fn toSqlValues(self: *const @This(), allocator: std.mem.Allocator) ![][]const u8 {
-        var values = std.ArrayList([]const u8).init(allocator);
-        if (self.id) |val| {
-            try values.append(try std.fmt.allocPrint(allocator, "{d}", .{val}));
-        } else {
-            try values.append("NULL");
-        }
-        if (self.email) |val| {
-            try values.append(try std.fmt.allocPrint(allocator, "'{s}'", .{val}));
-        } else {
-            try values.append("NULL");
-        }
+        var values: std.ArrayList([]const u8) = .empty;
+        try values.append(allocator, try std.fmt.allocPrint(allocator, "{d}", .{self.id}));
+        try values.append(allocator, try std.fmt.allocPrint(allocator, "'{s}'", .{self.email}));
         if (self.name) |val| {
-            try values.append(try std.fmt.allocPrint(allocator, "'{s}'", .{val}));
+            try values.append(allocator, try std.fmt.allocPrint(allocator, "'{s}'", .{val}));
         } else {
-            try values.append("NULL");
+            try values.append(allocator, "NULL");
         }
-        if (self.createdAt) |val| {
-            try values.append(try std.fmt.allocPrint(allocator, "to_timestamp({d})", .{val}));
-        } else {
-            try values.append("NULL");
-        }
-        if (self.updatedAt) |val| {
-            try values.append(try std.fmt.allocPrint(allocator, "to_timestamp({d})", .{val}));
-        } else {
-            try values.append("NULL");
-        }
-        return values.toOwnedSlice();
+        try values.append(allocator, try std.fmt.allocPrint(allocator, "to_timestamp({d})", .{self.createdAt}));
+        try values.append(allocator, try std.fmt.allocPrint(allocator, "to_timestamp({d})", .{self.updatedAt}));
+        return values.toOwnedSlice(allocator);
     }
 };
 
@@ -98,38 +82,18 @@ pub const Post = struct {
 
     /// Convert to SQL values for INSERT/UPDATE
     pub fn toSqlValues(self: *const @This(), allocator: std.mem.Allocator) ![][]const u8 {
-        var values = std.ArrayList([]const u8).init(allocator);
-        if (self.id) |val| {
-            try values.append(try std.fmt.allocPrint(allocator, "{d}", .{val}));
-        } else {
-            try values.append("NULL");
-        }
-        if (self.title) |val| {
-            try values.append(try std.fmt.allocPrint(allocator, "'{s}'", .{val}));
-        } else {
-            try values.append("NULL");
-        }
+        var values: std.ArrayList([]const u8) = .empty;
+        try values.append(allocator, try std.fmt.allocPrint(allocator, "{d}", .{self.id}));
+        try values.append(allocator, try std.fmt.allocPrint(allocator, "'{s}'", .{self.title}));
         if (self.content) |val| {
-            try values.append(try std.fmt.allocPrint(allocator, "'{s}'", .{val}));
+            try values.append(allocator, try std.fmt.allocPrint(allocator, "'{s}'", .{val}));
         } else {
-            try values.append("NULL");
+            try values.append(allocator, "NULL");
         }
-        if (self.published) |val| {
-            try values.append(if (val) "true" else "false");
-        } else {
-            try values.append("NULL");
-        }
-        if (self.authorId) |val| {
-            try values.append(try std.fmt.allocPrint(allocator, "{d}", .{val}));
-        } else {
-            try values.append("NULL");
-        }
-        if (self.createdAt) |val| {
-            try values.append(try std.fmt.allocPrint(allocator, "to_timestamp({d})", .{val}));
-        } else {
-            try values.append("NULL");
-        }
-        return values.toOwnedSlice();
+        try values.append(allocator, if (self.published) "true" else "false");
+        try values.append(allocator, try std.fmt.allocPrint(allocator, "{d}", .{self.authorId}));
+        try values.append(allocator, try std.fmt.allocPrint(allocator, "to_timestamp({d})", .{self.createdAt}));
+        return values.toOwnedSlice(allocator);
     }
 };
 
@@ -155,23 +119,15 @@ pub const Profile = struct {
 
     /// Convert to SQL values for INSERT/UPDATE
     pub fn toSqlValues(self: *const @This(), allocator: std.mem.Allocator) ![][]const u8 {
-        var values = std.ArrayList([]const u8).init(allocator);
-        if (self.id) |val| {
-            try values.append(try std.fmt.allocPrint(allocator, "{d}", .{val}));
-        } else {
-            try values.append("NULL");
-        }
+        var values: std.ArrayList([]const u8) = .empty;
+        try values.append(allocator, try std.fmt.allocPrint(allocator, "{d}", .{self.id}));
         if (self.bio) |val| {
-            try values.append(try std.fmt.allocPrint(allocator, "'{s}'", .{val}));
+            try values.append(allocator, try std.fmt.allocPrint(allocator, "'{s}'", .{val}));
         } else {
-            try values.append("NULL");
+            try values.append(allocator, "NULL");
         }
-        if (self.userId) |val| {
-            try values.append(try std.fmt.allocPrint(allocator, "{d}", .{val}));
-        } else {
-            try values.append("NULL");
-        }
-        return values.toOwnedSlice();
+        try values.append(allocator, try std.fmt.allocPrint(allocator, "{d}", .{self.userId}));
+        return values.toOwnedSlice(allocator);
     }
 };
 
@@ -258,8 +214,8 @@ pub const UserOperations = struct {
             .{ std.mem.join(self.allocator, ", ", &columns) catch "", std.mem.join(self.allocator, ", ", values) catch "" }
         );
         defer self.allocator.free(query);
-        const result = try self.connection.query(query);
-        defer result.deinit();
+        const result = try self.connection.execSafe(query);
+        _ = result;
         // TODO: Parse result and return the created record
         return data; // Placeholder
     }
@@ -275,7 +231,7 @@ pub const UserOperations = struct {
         }
         const query = try query_builder.build();
         defer self.allocator.free(query);
-        const result = try self.connection.query(query);
+        const result = try self.connection.execSafe(query);
         defer result.deinit();
         // TODO: Parse result set and return array of records
         return &[_]@This(){}; // Placeholder
@@ -339,8 +295,8 @@ pub const PostOperations = struct {
             .{ std.mem.join(self.allocator, ", ", &columns) catch "", std.mem.join(self.allocator, ", ", values) catch "" }
         );
         defer self.allocator.free(query);
-        const result = try self.connection.query(query);
-        defer result.deinit();
+        const result = try self.connection.execSafe(query);
+        _ = result;
         // TODO: Parse result and return the created record
         return data; // Placeholder
     }
@@ -356,7 +312,7 @@ pub const PostOperations = struct {
         }
         const query = try query_builder.build();
         defer self.allocator.free(query);
-        const result = try self.connection.query(query);
+        const result = try self.connection.execSafe(query);
         defer result.deinit();
         // TODO: Parse result set and return array of records
         return &[_]@This(){}; // Placeholder
@@ -417,8 +373,8 @@ pub const ProfileOperations = struct {
             .{ std.mem.join(self.allocator, ", ", &columns) catch "", std.mem.join(self.allocator, ", ", values) catch "" }
         );
         defer self.allocator.free(query);
-        const result = try self.connection.query(query);
-        defer result.deinit();
+        const result = try self.connection.execSafe(query);
+        _ = result;
         // TODO: Parse result and return the created record
         return data; // Placeholder
     }
@@ -434,7 +390,7 @@ pub const ProfileOperations = struct {
         }
         const query = try query_builder.build();
         defer self.allocator.free(query);
-        const result = try self.connection.query(query);
+        const result = try self.connection.execSafe(query);
         defer result.deinit();
         // TODO: Parse result set and return array of records
         return &[_]@This(){}; // Placeholder

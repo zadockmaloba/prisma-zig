@@ -30,7 +30,6 @@ pub const Generator = struct {
     }
 
     pub fn deinit(self: *Generator) void {
-        self.output.clearAndFree(self.allocator);
         self.output.deinit(self.allocator);
     }
 
@@ -65,9 +64,9 @@ pub const Generator = struct {
             \\const std = @import("std");
             \\const psql = @import("libpq_zig");
             \\
-            \\const Connection = psql.Connection;
-            \\const QueryBuilder = psql.QueryBuilder;
-            \\const ResultSet = psql.ResultSet;
+            \\pub const Connection = psql.Connection;
+            \\pub const QueryBuilder = psql.QueryBuilder;
+            \\pub const ResultSet = psql.ResultSet;
             \\
             \\/// Generated Prisma client for type-safe database operations
             \\
@@ -173,7 +172,7 @@ pub const Generator = struct {
 
         try output.appendSlice(self.allocator, "\n    /// Convert to SQL values for INSERT/UPDATE\n");
         try output.appendSlice(self.allocator, "    pub fn toSqlValues(self: *const @This(), allocator: std.mem.Allocator) ![][]const u8 {\n");
-        try output.appendSlice(self.allocator, "        var values = std.ArrayList([]const u8).init(allocator);\n");
+        try output.appendSlice(self.allocator, "        var values: std.ArrayList([]const u8) = .empty;\n");
 
         for (model.fields.items) |*field| {
             if (field.isPrimaryKey() and field.getDefaultValue() != null) {
@@ -186,13 +185,28 @@ pub const Generator = struct {
                 continue;
             }
 
+            if (!field.optional) {
+                // Non-optional fields
+                switch (field.type) {
+                    .string => try output.writer(self.allocator).print("        try values.append(allocator, try std.fmt.allocPrint(allocator, \"'{{s}}'\", .{{self.{s}}}));\n", .{field.name}),
+                    .int => try output.writer(self.allocator).print("        try values.append(allocator, try std.fmt.allocPrint(allocator, \"{{d}}\", .{{self.{s}}}));\n", .{field.name}),
+                    .boolean => try output.writer(self.allocator).print("        try values.append(allocator, if (self.{s}) \"true\" else \"false\");\n", .{field.name}),
+                    .datetime => try output.writer(self.allocator).print("        try values.append(allocator, try std.fmt.allocPrint(allocator, \"to_timestamp({{d}})\", .{{self.{s}}}));\n", .{field.name}),
+                    .model_ref, .model_array => {
+                        // Relationship fields should be skipped above, but handle gracefully
+                        try output.appendSlice(self.allocator, "        // Relationship field - handled separately\n");
+                    },
+                }
+                continue;
+            }
+
             try output.writer(self.allocator).print("        if (self.{s}) |val| {{\n", .{field.name});
 
             switch (field.type) {
-                .string => try output.appendSlice(self.allocator, "            try values.append(try std.fmt.allocPrint(allocator, \"'{s}'\", .{val}));\n"),
-                .int => try output.appendSlice(self.allocator, "            try values.append(try std.fmt.allocPrint(allocator, \"{d}\", .{val}));\n"),
-                .boolean => try output.appendSlice(self.allocator, "            try values.append(if (val) \"true\" else \"false\");\n"),
-                .datetime => try output.appendSlice(self.allocator, "            try values.append(try std.fmt.allocPrint(allocator, \"to_timestamp({d})\", .{val}));\n"),
+                .string => try output.appendSlice(self.allocator, "            try values.append(allocator, try std.fmt.allocPrint(allocator, \"'{s}'\", .{val}));\n"),
+                .int => try output.appendSlice(self.allocator, "            try values.append(allocator, try std.fmt.allocPrint(allocator, \"{d}\", .{val}));\n"),
+                .boolean => try output.appendSlice(self.allocator, "            try values.append(allocator, if (val) \"true\" else \"false\");\n"),
+                .datetime => try output.appendSlice(self.allocator, "            try values.append(allocator, try std.fmt.allocPrint(allocator, \"to_timestamp({d})\", .{val}));\n"),
                 .model_ref, .model_array => {
                     // Relationship fields should be skipped above, but handle gracefully
                     try output.appendSlice(self.allocator, "            // Relationship field - handled separately\n");
@@ -200,11 +214,11 @@ pub const Generator = struct {
             }
 
             try output.appendSlice(self.allocator, "        } else {\n");
-            try output.appendSlice(self.allocator, "            try values.append(\"NULL\");\n");
+            try output.appendSlice(self.allocator, "            try values.append(allocator, \"NULL\");\n");
             try output.appendSlice(self.allocator, "        }\n");
         }
 
-        try output.appendSlice(self.allocator, "        return values.toOwnedSlice();\n");
+        try output.appendSlice(self.allocator, "        return values.toOwnedSlice(allocator);\n");
         try output.appendSlice(self.allocator, "    }\n");
     }
 
@@ -340,7 +354,7 @@ pub const Generator = struct {
     /// Generate CREATE operation
     fn generateCreateOperation(self: *Generator, model: *const PrismaModel) CodeGenError!void {
         const table_name = try model.getTableName(self.allocator);
-        defer if(table_name.heap_allocated) self.allocator.free(table_name.value);
+        defer if (table_name.heap_allocated) self.allocator.free(table_name.value);
         var output = &self.output;
 
         try output.writer(self.allocator).print("    /// Create a new {s} record\n", .{model.name});
@@ -370,8 +384,9 @@ pub const Generator = struct {
         try output.appendSlice(self.allocator, "        );\n");
         try output.appendSlice(self.allocator, "        defer self.allocator.free(query);\n");
 
-        try output.appendSlice(self.allocator, "        const result = try self.connection.query(query);\n");
-        try output.appendSlice(self.allocator, "        defer result.deinit();\n");
+        try output.appendSlice(self.allocator, "        const result = try self.connection.execSafe(query);\n");
+        //try output.appendSlice(self.allocator, "        defer result.deinit();\n");
+        try output.appendSlice(self.allocator, "        _ = result;\n");
 
         try output.appendSlice(self.allocator, "        // TODO: Parse result and return the created record\n");
         try output.appendSlice(self.allocator, "        return data; // Placeholder\n");
@@ -382,8 +397,8 @@ pub const Generator = struct {
     fn generateFindManyOperation(self: *Generator, model: *const PrismaModel) CodeGenError!void {
         var output = &self.output;
         const table_name = try model.getTableName(self.allocator);
-        defer if(table_name.heap_allocated) self.allocator.free(table_name.value);
-        
+        defer if (table_name.heap_allocated) self.allocator.free(table_name.value);
+
         try output.writer(self.allocator).print("    /// Find multiple {s} records\n", .{model.name});
         try output.writer(self.allocator).print("    pub fn findMany(self: *@This(), options: struct {{ where: ?{s}Where = null }}) ![]@This() {{\n", .{model.name});
 
@@ -400,7 +415,7 @@ pub const Generator = struct {
         try output.appendSlice(self.allocator, "        const query = try query_builder.build();\n");
         try output.appendSlice(self.allocator, "        defer self.allocator.free(query);\n");
 
-        try output.appendSlice(self.allocator, "        const result = try self.connection.query(query);\n");
+        try output.appendSlice(self.allocator, "        const result = try self.connection.execSafe(query);\n");
         try output.appendSlice(self.allocator, "        defer result.deinit();\n");
 
         try output.appendSlice(self.allocator, "        // TODO: Parse result set and return array of records\n");

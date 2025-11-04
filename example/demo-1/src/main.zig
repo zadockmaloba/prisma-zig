@@ -4,6 +4,26 @@ const prisma = @import("prisma_test.zig");
 pub fn main() !void {
     // Prints to stderr, ignoring potential errors.
     std.debug.print("All your {s} are belong to us.\n", .{"codebase"});
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer if (gpa.deinit() != .ok) @panic("Memory leaks detected!");
+
+    const alloc = gpa.allocator();
+
+    var conn = prisma.Connection.init(alloc);
+    defer conn.deinit();
+    conn.connect("postgresql://postgres:postgres@localhost:5432/postgres") catch |err| {
+        std.debug.print("Failed to connect to database: {}\n", .{err});
+        return err;
+    };
+
+    var client = prisma.PrismaClient.init(alloc, &conn);
+    _ = client.user.create(.init(
+        1,
+        "alice@example.com",
+    )) catch |err| {
+        std.debug.print("Failed to create user: {}\n", .{err});
+        return err;
+    };
 }
 
 test "simple test" {
