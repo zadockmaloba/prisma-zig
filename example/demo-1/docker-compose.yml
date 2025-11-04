@@ -2,7 +2,7 @@
 
 services:
 
-  test-postgres-db:
+  demo-1-postgres-db:
     container_name: demo-1-postgres-db
     image: postgres
     restart: always
@@ -16,7 +16,7 @@ services:
     networks:
       - app-network
 
-  test-postgres-adminer:
+  demo-1-postgres-adminer:
     container_name: demo-1-postgres-adminer
     image: adminer
     restart: always
