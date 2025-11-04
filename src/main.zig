@@ -796,7 +796,7 @@ fn getDbHost() []const u8 {
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
+    defer if (gpa.deinit() != .ok) @panic("Memory leak detected");
     const allocator = gpa.allocator();
 
     // Get command line arguments
