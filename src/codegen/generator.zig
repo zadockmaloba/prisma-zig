@@ -379,7 +379,7 @@ pub const Generator = struct {
         try output.appendSlice(self.allocator, "        }\n");
 
         try output.writer(self.allocator).print("        const query = try std.fmt.allocPrint(self.allocator, \n", .{});
-        try output.writer(self.allocator).print("            \"INSERT INTO \\\"{s}\\\" ({{s}}) VALUES ({{s}}) RETURNING *\",\n", .{table_name.value});
+        try output.writer(self.allocator).print("            \"INSERT INTO \\\"{s}\\\" ({{s}}) VALUES ({{s}});\",\n", .{table_name.value});
         try output.appendSlice(self.allocator, "            .{ std.mem.join(self.allocator, \", \", &columns) catch \"\", std.mem.join(self.allocator, \", \", values) catch \"\" }\n");
         try output.appendSlice(self.allocator, "        );\n");
         try output.appendSlice(self.allocator, "        defer self.allocator.free(query);\n");
@@ -405,18 +405,18 @@ pub const Generator = struct {
         try output.writer(self.allocator).print("        var query_builder = QueryBuilder.init(self.allocator);\n", .{});
         try output.appendSlice(self.allocator, "        defer query_builder.deinit();\n");
 
-        try output.writer(self.allocator).print("        try query_builder.select(\"*\").from(\"\\\"{s}\\\"\");\n", .{table_name.value});
+        try output.writer(self.allocator).print("        _ = try query_builder.sql(\"SELECT * FROM \\\"{s}\\\"\");\n", .{table_name.value});
 
         try output.appendSlice(self.allocator, "        if (options.where) |where_clause| {\n");
         try output.appendSlice(self.allocator, "            // TODO: Build WHERE clause from where_clause\n");
         try output.appendSlice(self.allocator, "            _ = where_clause;\n");
         try output.appendSlice(self.allocator, "        }\n");
 
-        try output.appendSlice(self.allocator, "        const query = try query_builder.build();\n");
-        try output.appendSlice(self.allocator, "        defer self.allocator.free(query);\n");
+        try output.appendSlice(self.allocator, "        const query = query_builder.build();\n");
 
         try output.appendSlice(self.allocator, "        const result = try self.connection.execSafe(query);\n");
-        try output.appendSlice(self.allocator, "        defer result.deinit();\n");
+        //try output.appendSlice(self.allocator, "        defer result.deinit();\n");
+        try output.appendSlice(self.allocator, "        _ = result;\n");
 
         try output.appendSlice(self.allocator, "        // TODO: Parse result set and return array of records\n");
         try output.appendSlice(self.allocator, "        return &[_]@This(){}; // Placeholder\n");

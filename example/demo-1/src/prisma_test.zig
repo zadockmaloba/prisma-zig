@@ -210,7 +210,7 @@ pub const UserOperations = struct {
             self.allocator.free(values);
         }
         const query = try std.fmt.allocPrint(self.allocator, 
-            "INSERT INTO \"user\" ({s}) VALUES ({s}) RETURNING *",
+            "INSERT INTO \"user\" ({s}) VALUES ({s});",
             .{ std.mem.join(self.allocator, ", ", &columns) catch "", std.mem.join(self.allocator, ", ", values) catch "" }
         );
         defer self.allocator.free(query);
@@ -224,15 +224,14 @@ pub const UserOperations = struct {
     pub fn findMany(self: *@This(), options: struct { where: ?UserWhere = null }) ![]@This() {
         var query_builder = QueryBuilder.init(self.allocator);
         defer query_builder.deinit();
-        try query_builder.select("*").from("\"user\"");
+        _ = try query_builder.sql("SELECT * FROM \"user\"");
         if (options.where) |where_clause| {
             // TODO: Build WHERE clause from where_clause
             _ = where_clause;
         }
-        const query = try query_builder.build();
-        defer self.allocator.free(query);
+        const query = query_builder.build();
         const result = try self.connection.execSafe(query);
-        defer result.deinit();
+        _ = result;
         // TODO: Parse result set and return array of records
         return &[_]@This(){}; // Placeholder
     }
@@ -291,7 +290,7 @@ pub const PostOperations = struct {
             self.allocator.free(values);
         }
         const query = try std.fmt.allocPrint(self.allocator, 
-            "INSERT INTO \"posts\" ({s}) VALUES ({s}) RETURNING *",
+            "INSERT INTO \"posts\" ({s}) VALUES ({s});",
             .{ std.mem.join(self.allocator, ", ", &columns) catch "", std.mem.join(self.allocator, ", ", values) catch "" }
         );
         defer self.allocator.free(query);
@@ -305,15 +304,14 @@ pub const PostOperations = struct {
     pub fn findMany(self: *@This(), options: struct { where: ?PostWhere = null }) ![]@This() {
         var query_builder = QueryBuilder.init(self.allocator);
         defer query_builder.deinit();
-        try query_builder.select("*").from("\"posts\"");
+        _ = try query_builder.sql("SELECT * FROM \"posts\"");
         if (options.where) |where_clause| {
             // TODO: Build WHERE clause from where_clause
             _ = where_clause;
         }
-        const query = try query_builder.build();
-        defer self.allocator.free(query);
+        const query = query_builder.build();
         const result = try self.connection.execSafe(query);
-        defer result.deinit();
+        _ = result;
         // TODO: Parse result set and return array of records
         return &[_]@This(){}; // Placeholder
     }
@@ -369,7 +367,7 @@ pub const ProfileOperations = struct {
             self.allocator.free(values);
         }
         const query = try std.fmt.allocPrint(self.allocator, 
-            "INSERT INTO \"profile\" ({s}) VALUES ({s}) RETURNING *",
+            "INSERT INTO \"profile\" ({s}) VALUES ({s});",
             .{ std.mem.join(self.allocator, ", ", &columns) catch "", std.mem.join(self.allocator, ", ", values) catch "" }
         );
         defer self.allocator.free(query);
@@ -383,15 +381,14 @@ pub const ProfileOperations = struct {
     pub fn findMany(self: *@This(), options: struct { where: ?ProfileWhere = null }) ![]@This() {
         var query_builder = QueryBuilder.init(self.allocator);
         defer query_builder.deinit();
-        try query_builder.select("*").from("\"profile\"");
+        _ = try query_builder.sql("SELECT * FROM \"profile\"");
         if (options.where) |where_clause| {
             // TODO: Build WHERE clause from where_clause
             _ = where_clause;
         }
-        const query = try query_builder.build();
-        defer self.allocator.free(query);
+        const query = query_builder.build();
         const result = try self.connection.execSafe(query);
-        defer result.deinit();
+        _ = result;
         // TODO: Parse result set and return array of records
         return &[_]@This(){}; // Placeholder
     }
