@@ -203,14 +203,14 @@ pub const UserOperations = struct {
 
     /// Create a new User record
     pub fn create(self: *@This(), data: User) !User {
-        const columns = [_][]const u8{"id", "email", "name", "createdAt", "updatedAt"};
+        const columns = [_][]const u8{"\"id\"", "\"email\"", "\"name\"", "\"createdAt\"", "\"updatedAt\""};
         const values = try data.toSqlValues(self.allocator);
         defer {
             for (values) |val| self.allocator.free(val);
             self.allocator.free(values);
         }
         const query = try std.fmt.allocPrint(self.allocator, 
-            "INSERT INTO user ({s}) VALUES ({s}) RETURNING *",
+            "INSERT INTO \"user\" ({s}) VALUES ({s}) RETURNING *",
             .{ std.mem.join(self.allocator, ", ", &columns) catch "", std.mem.join(self.allocator, ", ", values) catch "" }
         );
         defer self.allocator.free(query);
@@ -224,7 +224,7 @@ pub const UserOperations = struct {
     pub fn findMany(self: *@This(), options: struct { where: ?UserWhere = null }) ![]@This() {
         var query_builder = QueryBuilder.init(self.allocator);
         defer query_builder.deinit();
-        try query_builder.select("*").from("user");
+        try query_builder.select("*").from("\"user\"");
         if (options.where) |where_clause| {
             // TODO: Build WHERE clause from where_clause
             _ = where_clause;
@@ -284,14 +284,14 @@ pub const PostOperations = struct {
 
     /// Create a new Post record
     pub fn create(self: *@This(), data: Post) !Post {
-        const columns = [_][]const u8{"id", "title", "content", "published", "authorId", "createdAt"};
+        const columns = [_][]const u8{"\"id\"", "\"title\"", "\"content\"", "\"published\"", "\"authorId\"", "\"createdAt\""};
         const values = try data.toSqlValues(self.allocator);
         defer {
             for (values) |val| self.allocator.free(val);
             self.allocator.free(values);
         }
         const query = try std.fmt.allocPrint(self.allocator, 
-            "INSERT INTO posts ({s}) VALUES ({s}) RETURNING *",
+            "INSERT INTO \"posts\" ({s}) VALUES ({s}) RETURNING *",
             .{ std.mem.join(self.allocator, ", ", &columns) catch "", std.mem.join(self.allocator, ", ", values) catch "" }
         );
         defer self.allocator.free(query);
@@ -305,7 +305,7 @@ pub const PostOperations = struct {
     pub fn findMany(self: *@This(), options: struct { where: ?PostWhere = null }) ![]@This() {
         var query_builder = QueryBuilder.init(self.allocator);
         defer query_builder.deinit();
-        try query_builder.select("*").from("posts");
+        try query_builder.select("*").from("\"posts\"");
         if (options.where) |where_clause| {
             // TODO: Build WHERE clause from where_clause
             _ = where_clause;
@@ -362,14 +362,14 @@ pub const ProfileOperations = struct {
 
     /// Create a new Profile record
     pub fn create(self: *@This(), data: Profile) !Profile {
-        const columns = [_][]const u8{"id", "bio", "user_id"};
+        const columns = [_][]const u8{"\"id\"", "\"bio\"", "\"user_id\""};
         const values = try data.toSqlValues(self.allocator);
         defer {
             for (values) |val| self.allocator.free(val);
             self.allocator.free(values);
         }
         const query = try std.fmt.allocPrint(self.allocator, 
-            "INSERT INTO profile ({s}) VALUES ({s}) RETURNING *",
+            "INSERT INTO \"profile\" ({s}) VALUES ({s}) RETURNING *",
             .{ std.mem.join(self.allocator, ", ", &columns) catch "", std.mem.join(self.allocator, ", ", values) catch "" }
         );
         defer self.allocator.free(query);
@@ -383,7 +383,7 @@ pub const ProfileOperations = struct {
     pub fn findMany(self: *@This(), options: struct { where: ?ProfileWhere = null }) ![]@This() {
         var query_builder = QueryBuilder.init(self.allocator);
         defer query_builder.deinit();
-        try query_builder.select("*").from("profile");
+        try query_builder.select("*").from("\"profile\"");
         if (options.where) |where_clause| {
             // TODO: Build WHERE clause from where_clause
             _ = where_clause;
