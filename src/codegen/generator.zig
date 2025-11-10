@@ -368,7 +368,7 @@ pub const Generator = struct {
             if (field.type.isRelation()) continue; // Skip relationship fields
             if (!first) try output.appendSlice(self.allocator, ", ");
             first = false;
-            try output.writer(self.allocator).print("\"{s}\"", .{field.getColumnName()});
+            try output.writer(self.allocator).print("\"\\\"{s}\\\"\"", .{field.getColumnName()});
         }
         try output.appendSlice(self.allocator, "};\n");
 
@@ -379,7 +379,7 @@ pub const Generator = struct {
         try output.appendSlice(self.allocator, "        }\n");
 
         try output.writer(self.allocator).print("        const query = try std.fmt.allocPrint(self.allocator, \n", .{});
-        try output.writer(self.allocator).print("            \"INSERT INTO {s} ({{s}}) VALUES ({{s}}) RETURNING *\",\n", .{table_name.value});
+        try output.writer(self.allocator).print("            \"INSERT INTO \\\"{s}\\\" ({{s}}) VALUES ({{s}}) RETURNING *\",\n", .{table_name.value});
         try output.appendSlice(self.allocator, "            .{ std.mem.join(self.allocator, \", \", &columns) catch \"\", std.mem.join(self.allocator, \", \", values) catch \"\" }\n");
         try output.appendSlice(self.allocator, "        );\n");
         try output.appendSlice(self.allocator, "        defer self.allocator.free(query);\n");
@@ -405,7 +405,7 @@ pub const Generator = struct {
         try output.writer(self.allocator).print("        var query_builder = QueryBuilder.init(self.allocator);\n", .{});
         try output.appendSlice(self.allocator, "        defer query_builder.deinit();\n");
 
-        try output.writer(self.allocator).print("        try query_builder.select(\"*\").from(\"{s}\");\n", .{table_name.value});
+        try output.writer(self.allocator).print("        try query_builder.select(\"*\").from(\"\\\"{s}\\\"\");\n", .{table_name.value});
 
         try output.appendSlice(self.allocator, "        if (options.where) |where_clause| {\n");
         try output.appendSlice(self.allocator, "            // TODO: Build WHERE clause from where_clause\n");
