@@ -251,7 +251,7 @@ pub const UserOperations = struct {
     }
 
     /// Find multiple User records
-    pub fn findMany(self: *@This(), options: struct { where: ?UserWhere = null }) ![]@This() {
+    pub fn findMany(self: *@This(), options: struct { where: ?UserWhere = null }) ![]User {
         var query_builder = QueryBuilder.init(self.allocator);
         defer query_builder.deinit();
         _ = try query_builder.sql("SELECT * FROM \"user\"");
@@ -259,11 +259,23 @@ pub const UserOperations = struct {
             // TODO: Build WHERE clause from where_clause
             _ = where_clause;
         }
+
         const query = query_builder.build();
-        const result = try self.connection.execSafe(query);
-        _ = result;
-        // TODO: Parse result set and return array of records
-        return &[_]@This(){}; // Placeholder
+        var result = try self.connection.execSafe(query);
+        const row_count = result.rowCount();
+        var records = try self.allocator.alloc(User, @intCast(row_count));
+        errdefer self.allocator.free(records);
+
+        var idx: usize = 0;
+        while (result.next()) |row| : (idx += 1) {
+            records[idx].id = try row.get("id", i32);
+            records[idx].email = try row.get("email", []const u8);
+            records[idx].name = try row.getOpt("name", []const u8);
+            records[idx].createdAt = try row.get("createdAt", i64);
+            records[idx].updatedAt = try row.get("updatedAt", i64);
+        }
+
+        return records;
     }
 
     /// Find a unique User record
@@ -330,7 +342,7 @@ pub const PostOperations = struct {
     }
 
     /// Find multiple Post records
-    pub fn findMany(self: *@This(), options: struct { where: ?PostWhere = null }) ![]@This() {
+    pub fn findMany(self: *@This(), options: struct { where: ?PostWhere = null }) ![]Post {
         var query_builder = QueryBuilder.init(self.allocator);
         defer query_builder.deinit();
         _ = try query_builder.sql("SELECT * FROM \"posts\"");
@@ -338,11 +350,24 @@ pub const PostOperations = struct {
             // TODO: Build WHERE clause from where_clause
             _ = where_clause;
         }
+
         const query = query_builder.build();
-        const result = try self.connection.execSafe(query);
-        _ = result;
-        // TODO: Parse result set and return array of records
-        return &[_]@This(){}; // Placeholder
+        var result = try self.connection.execSafe(query);
+        const row_count = result.rowCount();
+        var records = try self.allocator.alloc(Post, @intCast(row_count));
+        errdefer self.allocator.free(records);
+
+        var idx: usize = 0;
+        while (result.next()) |row| : (idx += 1) {
+            records[idx].id = try row.get("id", i32);
+            records[idx].title = try row.get("title", []const u8);
+            records[idx].content = try row.getOpt("content", []const u8);
+            records[idx].published = try row.get("published", bool);
+            records[idx].authorId = try row.get("authorId", i32);
+            records[idx].createdAt = try row.get("createdAt", i64);
+        }
+
+        return records;
     }
 
     /// Find a unique Post record
@@ -406,7 +431,7 @@ pub const ProfileOperations = struct {
     }
 
     /// Find multiple Profile records
-    pub fn findMany(self: *@This(), options: struct { where: ?ProfileWhere = null }) ![]@This() {
+    pub fn findMany(self: *@This(), options: struct { where: ?ProfileWhere = null }) ![]Profile {
         var query_builder = QueryBuilder.init(self.allocator);
         defer query_builder.deinit();
         _ = try query_builder.sql("SELECT * FROM \"profile\"");
@@ -414,11 +439,21 @@ pub const ProfileOperations = struct {
             // TODO: Build WHERE clause from where_clause
             _ = where_clause;
         }
+
         const query = query_builder.build();
-        const result = try self.connection.execSafe(query);
-        _ = result;
-        // TODO: Parse result set and return array of records
-        return &[_]@This(){}; // Placeholder
+        var result = try self.connection.execSafe(query);
+        const row_count = result.rowCount();
+        var records = try self.allocator.alloc(Profile, @intCast(row_count));
+        errdefer self.allocator.free(records);
+
+        var idx: usize = 0;
+        while (result.next()) |row| : (idx += 1) {
+            records[idx].id = try row.get("id", i32);
+            records[idx].bio = try row.getOpt("bio", []const u8);
+            records[idx].userId = try row.get("user_id", i32);
+        }
+
+        return records;
     }
 
     /// Find a unique Profile record

@@ -22,8 +22,9 @@ pub fn main() !void {
         "alice@example.com",
     )) catch |err| {
         std.debug.print("Failed to create user: {}\n", .{err});
-        return err;
     };
+    _ = try client.user.findMany(.{ .where = .{.email = .{ .contains = "alice" } } });
+ 
 }
 
 test "simple test" {

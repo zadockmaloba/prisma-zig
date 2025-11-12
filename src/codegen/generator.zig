@@ -403,7 +403,7 @@ pub const Generator = struct {
         defer if (table_name.heap_allocated) self.allocator.free(table_name.value);
 
         try output.writer(self.allocator).print("    /// Find multiple {s} records\n", .{model.name});
-        try output.writer(self.allocator).print("    pub fn findMany(self: *@This(), options: struct {{ where: ?{s}Where = null }}) ![]@This() {{\n", .{model.name});
+        try output.writer(self.allocator).print("    pub fn findMany(self: *@This(), options: struct {{ where: ?{s}Where = null }}) ![]{s} {{\n", .{ model.name, model.name });
 
         try output.writer(self.allocator).print("        var query_builder = QueryBuilder.init(self.allocator);\n", .{});
         try output.appendSlice(self.allocator, "        defer query_builder.deinit();\n");
@@ -413,16 +413,64 @@ pub const Generator = struct {
         try output.appendSlice(self.allocator, "        if (options.where) |where_clause| {\n");
         try output.appendSlice(self.allocator, "            // TODO: Build WHERE clause from where_clause\n");
         try output.appendSlice(self.allocator, "            _ = where_clause;\n");
-        try output.appendSlice(self.allocator, "        }\n");
+        try output.appendSlice(self.allocator, "        }\n\n");
 
         try output.appendSlice(self.allocator, "        const query = query_builder.build();\n");
+        try output.appendSlice(self.allocator, "        var result = try self.connection.execSafe(query);\n");
+        //try output.appendSlice(self.allocator, "        defer result.deinit();\n\n");
 
-        try output.appendSlice(self.allocator, "        const result = try self.connection.execSafe(query);\n");
-        //try output.appendSlice(self.allocator, "        defer result.deinit();\n");
-        try output.appendSlice(self.allocator, "        _ = result;\n");
+        try output.appendSlice(self.allocator, "        const row_count = result.rowCount();\n");
+        try output.writer(self.allocator).print("        var records = try self.allocator.alloc({s}, @intCast(row_count));\n", .{model.name});
+        try output.appendSlice(self.allocator, "        errdefer self.allocator.free(records);\n\n");
 
-        try output.appendSlice(self.allocator, "        // TODO: Parse result set and return array of records\n");
-        try output.appendSlice(self.allocator, "        return &[_]@This(){}; // Placeholder\n");
+        try output.appendSlice(self.allocator, "        var idx: usize = 0;\n");
+        try output.appendSlice(self.allocator, "        while (result.next()) |row| : (idx += 1) {\n");
+
+        // Generate field parsing for each field
+        for (model.fields.items) |*field| {
+            if (field.type.isRelation()) continue;
+
+            const column_name = field.getColumnName();
+
+            if (field.optional) {
+                // Optional field handling
+                switch (field.type) {
+                    .string => {
+                        try output.writer(self.allocator).print("            records[idx].{s} = try row.getOpt(\"{s}\", []const u8);\n", .{ field.name, column_name });
+                    },
+                    .int => {
+                        try output.writer(self.allocator).print("            records[idx].{s} = try row.getOpt(\"{s}\", i32);\n", .{ field.name, column_name });
+                    },
+                    .boolean => {
+                        try output.writer(self.allocator).print("            records[idx].{s} = try row.getOpt(\"{s}\", bool);\n", .{ field.name, column_name });
+                    },
+                    .datetime => {
+                        try output.writer(self.allocator).print("            records[idx].{s} = try row.getOpt(\"{s}\", i64);\n", .{ field.name, column_name });
+                    },
+                    else => {},
+                }
+            } else {
+                // Non-optional field handling
+                switch (field.type) {
+                    .string => {
+                        try output.writer(self.allocator).print("            records[idx].{s} = try row.get(\"{s}\", []const u8);\n", .{ field.name, column_name });
+                    },
+                    .int => {
+                        try output.writer(self.allocator).print("            records[idx].{s} = try row.get(\"{s}\", i32);\n", .{ field.name, column_name });
+                    },
+                    .boolean => {
+                        try output.writer(self.allocator).print("            records[idx].{s} = try row.get(\"{s}\", bool);\n", .{ field.name, column_name });
+                    },
+                    .datetime => {
+                        try output.writer(self.allocator).print("            records[idx].{s} = try row.get(\"{s}\", i64);\n", .{ field.name, column_name });
+                    },
+                    else => {},
+                }
+            }
+        }
+
+        try output.appendSlice(self.allocator, "        }\n\n");
+        try output.appendSlice(self.allocator, "        return records;\n");
         try output.appendSlice(self.allocator, "    }\n\n");
     }
 
