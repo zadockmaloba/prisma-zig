@@ -376,18 +376,20 @@ pub const Generator = struct {
         try output.appendSlice(self.allocator, "        defer {\n");
         try output.appendSlice(self.allocator, "            for (values) |val| self.allocator.free(val);\n");
         try output.appendSlice(self.allocator, "            self.allocator.free(values);\n");
-        try output.appendSlice(self.allocator, "        }\n");
+        try output.appendSlice(self.allocator, "        }\n\n");
+
+        try output.appendSlice(self.allocator, "        const key_list = std.mem.join(self.allocator, \", \", &columns) catch \"\";\n");
+        try output.appendSlice(self.allocator, "        defer self.allocator.free(key_list);\n");
+        try output.appendSlice(self.allocator, "        const val_list = std.mem.join(self.allocator, \", \", values) catch \"\";\n");
+        try output.appendSlice(self.allocator, "        defer self.allocator.free(val_list);\n\n");
 
         try output.writer(self.allocator).print("        const query = try std.fmt.allocPrint(self.allocator, \n", .{});
         try output.writer(self.allocator).print("            \"INSERT INTO \\\"{s}\\\" ({{s}}) VALUES ({{s}});\",\n", .{table_name.value});
-        try output.appendSlice(self.allocator, "            .{ std.mem.join(self.allocator, \", \", &columns) catch \"\", std.mem.join(self.allocator, \", \", values) catch \"\" }\n");
+        try output.appendSlice(self.allocator, "            .{ key_list, val_list }\n");
         try output.appendSlice(self.allocator, "        );\n");
         try output.appendSlice(self.allocator, "        defer self.allocator.free(query);\n");
 
-        try output.appendSlice(self.allocator, "        const result = try self.connection.execSafe(query);\n");
-        //try output.appendSlice(self.allocator, "        defer result.deinit();\n");
-        try output.appendSlice(self.allocator, "        _ = result;\n");
-
+        try output.appendSlice(self.allocator, "        _ = try self.connection.execSafe(query);\n");
         try output.appendSlice(self.allocator, "        // TODO: Parse result and return the created record\n");
         try output.appendSlice(self.allocator, "        return data; // Placeholder\n");
         try output.appendSlice(self.allocator, "    }\n\n");
