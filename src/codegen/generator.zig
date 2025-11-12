@@ -173,6 +173,7 @@ pub const Generator = struct {
         try output.appendSlice(self.allocator, "\n    /// Convert to SQL values for INSERT/UPDATE\n");
         try output.appendSlice(self.allocator, "    pub fn toSqlValues(self: *const @This(), allocator: std.mem.Allocator) ![]const u8 {\n");
         try output.appendSlice(self.allocator, "        var values: std.ArrayList(u8) = .empty;\n");
+        try output.appendSlice(self.allocator, "        var first: bool = true;\n");
 
         for (model.fields.items) |*field| {
             if (field.isPrimaryKey() and field.getDefaultValue() != null) {
@@ -187,10 +188,12 @@ pub const Generator = struct {
 
             if (!field.optional) {
                 // Non-optional fields
+                try output.appendSlice(self.allocator, "        if (!first) try values.appendSlice(allocator, \", \");\n");
+                try output.appendSlice(self.allocator, "        first = false;\n");
                 switch (field.type) {
                     .string => try output.writer(self.allocator).print("        try values.writer(allocator).print(\"'{{s}}'\", .{{self.{s}}});\n", .{field.name}),
                     .int => try output.writer(self.allocator).print("        try values.writer(allocator).print(\"{{d}}\", .{{self.{s}}});\n", .{field.name}),
-                    .boolean => try output.writer(self.allocator).print("        try values.append(allocator, if (self.{s}) \"true\" else \"false\");\n", .{field.name}),
+                    .boolean => try output.writer(self.allocator).print("        try values.appendSlice(allocator, if (self.{s}) \"true\" else \"false\");\n", .{field.name}),
                     .datetime => try output.writer(self.allocator).print("        try values.writer(allocator).print(\"to_timestamp({{d}})\", .{{self.{s}}});\n", .{field.name}),
                     .model_ref, .model_array => {
                         // Relationship fields should be skipped above, but handle gracefully
@@ -200,6 +203,8 @@ pub const Generator = struct {
                 continue;
             }
 
+            try output.appendSlice(self.allocator, "        if (!first) try values.appendSlice(allocator, \", \");\n");
+            try output.appendSlice(self.allocator, "        first = false;\n");
             try output.writer(self.allocator).print("        if (self.{s}) |val| {{\n", .{field.name});
 
             switch (field.type) {

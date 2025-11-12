@@ -35,17 +35,28 @@ pub const User = struct {
     }
 
     /// Convert to SQL values for INSERT/UPDATE
-    pub fn toSqlValues(self: *const @This(), allocator: std.mem.Allocator) ![][]const u8 {
-        var values: std.ArrayList([]const u8) = .empty;
-        try values.append(allocator, try std.fmt.allocPrint(allocator, "{d}", .{self.id}));
-        try values.append(allocator, try std.fmt.allocPrint(allocator, "'{s}'", .{self.email}));
+    pub fn toSqlValues(self: *const @This(), allocator: std.mem.Allocator) ![]const u8 {
+        var values: std.ArrayList(u8) = .empty;
+        var first: bool = true;
+        if (!first) try values.appendSlice(allocator, ", ");
+        first = false;
+        try values.writer(allocator).print("{d}", .{self.id});
+        if (!first) try values.appendSlice(allocator, ", ");
+        first = false;
+        try values.writer(allocator).print("'{s}'", .{self.email});
+        if (!first) try values.appendSlice(allocator, ", ");
+        first = false;
         if (self.name) |val| {
-            try values.append(allocator, try std.fmt.allocPrint(allocator, "'{s}'", .{val}));
+            try values.writer(allocator).print("'{s}'", .{val});
         } else {
-            try values.append(allocator, "NULL");
+            try values.appendSlice(allocator, "NULL");
         }
-        try values.append(allocator, try std.fmt.allocPrint(allocator, "to_timestamp({d})", .{self.createdAt}));
-        try values.append(allocator, try std.fmt.allocPrint(allocator, "to_timestamp({d})", .{self.updatedAt}));
+        if (!first) try values.appendSlice(allocator, ", ");
+        first = false;
+        try values.writer(allocator).print("to_timestamp({d})", .{self.createdAt});
+        if (!first) try values.appendSlice(allocator, ", ");
+        first = false;
+        try values.writer(allocator).print("to_timestamp({d})", .{self.updatedAt});
         return values.toOwnedSlice(allocator);
     }
 };
@@ -81,18 +92,31 @@ pub const Post = struct {
     }
 
     /// Convert to SQL values for INSERT/UPDATE
-    pub fn toSqlValues(self: *const @This(), allocator: std.mem.Allocator) ![][]const u8 {
-        var values: std.ArrayList([]const u8) = .empty;
-        try values.append(allocator, try std.fmt.allocPrint(allocator, "{d}", .{self.id}));
-        try values.append(allocator, try std.fmt.allocPrint(allocator, "'{s}'", .{self.title}));
+    pub fn toSqlValues(self: *const @This(), allocator: std.mem.Allocator) ![]const u8 {
+        var values: std.ArrayList(u8) = .empty;
+        var first: bool = true;
+        if (!first) try values.appendSlice(allocator, ", ");
+        first = false;
+        try values.writer(allocator).print("{d}", .{self.id});
+        if (!first) try values.appendSlice(allocator, ", ");
+        first = false;
+        try values.writer(allocator).print("'{s}'", .{self.title});
+        if (!first) try values.appendSlice(allocator, ", ");
+        first = false;
         if (self.content) |val| {
-            try values.append(allocator, try std.fmt.allocPrint(allocator, "'{s}'", .{val}));
+            try values.writer(allocator).print("'{s}'", .{val});
         } else {
-            try values.append(allocator, "NULL");
+            try values.appendSlice(allocator, "NULL");
         }
-        try values.append(allocator, if (self.published) "true" else "false");
-        try values.append(allocator, try std.fmt.allocPrint(allocator, "{d}", .{self.authorId}));
-        try values.append(allocator, try std.fmt.allocPrint(allocator, "to_timestamp({d})", .{self.createdAt}));
+        if (!first) try values.appendSlice(allocator, ", ");
+        first = false;
+        try values.appendSlice(allocator, if (self.published) "true" else "false");
+        if (!first) try values.appendSlice(allocator, ", ");
+        first = false;
+        try values.writer(allocator).print("{d}", .{self.authorId});
+        if (!first) try values.appendSlice(allocator, ", ");
+        first = false;
+        try values.writer(allocator).print("to_timestamp({d})", .{self.createdAt});
         return values.toOwnedSlice(allocator);
     }
 };
@@ -118,15 +142,22 @@ pub const Profile = struct {
     }
 
     /// Convert to SQL values for INSERT/UPDATE
-    pub fn toSqlValues(self: *const @This(), allocator: std.mem.Allocator) ![][]const u8 {
-        var values: std.ArrayList([]const u8) = .empty;
-        try values.append(allocator, try std.fmt.allocPrint(allocator, "{d}", .{self.id}));
+    pub fn toSqlValues(self: *const @This(), allocator: std.mem.Allocator) ![]const u8 {
+        var values: std.ArrayList(u8) = .empty;
+        var first: bool = true;
+        if (!first) try values.appendSlice(allocator, ", ");
+        first = false;
+        try values.writer(allocator).print("{d}", .{self.id});
+        if (!first) try values.appendSlice(allocator, ", ");
+        first = false;
         if (self.bio) |val| {
-            try values.append(allocator, try std.fmt.allocPrint(allocator, "'{s}'", .{val}));
+            try values.writer(allocator).print("'{s}'", .{val});
         } else {
-            try values.append(allocator, "NULL");
+            try values.appendSlice(allocator, "NULL");
         }
-        try values.append(allocator, try std.fmt.allocPrint(allocator, "{d}", .{self.userId}));
+        if (!first) try values.appendSlice(allocator, ", ");
+        first = false;
+        try values.writer(allocator).print("{d}", .{self.userId});
         return values.toOwnedSlice(allocator);
     }
 };
@@ -205,17 +236,16 @@ pub const UserOperations = struct {
     pub fn create(self: *@This(), data: User) !User {
         const columns = [_][]const u8{"\"id\"", "\"email\"", "\"name\"", "\"createdAt\"", "\"updatedAt\""};
         const values = try data.toSqlValues(self.allocator);
-        defer {
-            for (values) |val| self.allocator.free(val);
-            self.allocator.free(values);
-        }
+        defer self.allocator.free(values);
+        const key_list = std.mem.join(self.allocator, ", ", &columns) catch "";
+        defer self.allocator.free(key_list);
+        const val_list = values;
         const query = try std.fmt.allocPrint(self.allocator, 
             "INSERT INTO \"user\" ({s}) VALUES ({s});",
-            .{ std.mem.join(self.allocator, ", ", &columns) catch "", std.mem.join(self.allocator, ", ", values) catch "" }
+            .{ key_list, val_list }
         );
         defer self.allocator.free(query);
-        const result = try self.connection.execSafe(query);
-        _ = result;
+        _ = try self.connection.execSafe(query);
         // TODO: Parse result and return the created record
         return data; // Placeholder
     }
@@ -285,17 +315,16 @@ pub const PostOperations = struct {
     pub fn create(self: *@This(), data: Post) !Post {
         const columns = [_][]const u8{"\"id\"", "\"title\"", "\"content\"", "\"published\"", "\"authorId\"", "\"createdAt\""};
         const values = try data.toSqlValues(self.allocator);
-        defer {
-            for (values) |val| self.allocator.free(val);
-            self.allocator.free(values);
-        }
+        defer self.allocator.free(values);
+        const key_list = std.mem.join(self.allocator, ", ", &columns) catch "";
+        defer self.allocator.free(key_list);
+        const val_list = values;
         const query = try std.fmt.allocPrint(self.allocator, 
             "INSERT INTO \"posts\" ({s}) VALUES ({s});",
-            .{ std.mem.join(self.allocator, ", ", &columns) catch "", std.mem.join(self.allocator, ", ", values) catch "" }
+            .{ key_list, val_list }
         );
         defer self.allocator.free(query);
-        const result = try self.connection.execSafe(query);
-        _ = result;
+        _ = try self.connection.execSafe(query);
         // TODO: Parse result and return the created record
         return data; // Placeholder
     }
@@ -362,17 +391,16 @@ pub const ProfileOperations = struct {
     pub fn create(self: *@This(), data: Profile) !Profile {
         const columns = [_][]const u8{"\"id\"", "\"bio\"", "\"user_id\""};
         const values = try data.toSqlValues(self.allocator);
-        defer {
-            for (values) |val| self.allocator.free(val);
-            self.allocator.free(values);
-        }
+        defer self.allocator.free(values);
+        const key_list = std.mem.join(self.allocator, ", ", &columns) catch "";
+        defer self.allocator.free(key_list);
+        const val_list = values;
         const query = try std.fmt.allocPrint(self.allocator, 
             "INSERT INTO \"profile\" ({s}) VALUES ({s});",
-            .{ std.mem.join(self.allocator, ", ", &columns) catch "", std.mem.join(self.allocator, ", ", values) catch "" }
+            .{ key_list, val_list }
         );
         defer self.allocator.free(query);
-        const result = try self.connection.execSafe(query);
-        _ = result;
+        _ = try self.connection.execSafe(query);
         // TODO: Parse result and return the created record
         return data; // Placeholder
     }
