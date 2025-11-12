@@ -171,8 +171,8 @@ pub const Generator = struct {
         var output = &self.output;
 
         try output.appendSlice(self.allocator, "\n    /// Convert to SQL values for INSERT/UPDATE\n");
-        try output.appendSlice(self.allocator, "    pub fn toSqlValues(self: *const @This(), allocator: std.mem.Allocator) ![][]const u8 {\n");
-        try output.appendSlice(self.allocator, "        var values: std.ArrayList([]const u8) = .empty;\n");
+        try output.appendSlice(self.allocator, "    pub fn toSqlValues(self: *const @This(), allocator: std.mem.Allocator) ![]const u8 {\n");
+        try output.appendSlice(self.allocator, "        var values: std.ArrayList(u8) = .empty;\n");
 
         for (model.fields.items) |*field| {
             if (field.isPrimaryKey() and field.getDefaultValue() != null) {
@@ -188,10 +188,10 @@ pub const Generator = struct {
             if (!field.optional) {
                 // Non-optional fields
                 switch (field.type) {
-                    .string => try output.writer(self.allocator).print("        try values.append(allocator, try std.fmt.allocPrint(allocator, \"'{{s}}'\", .{{self.{s}}}));\n", .{field.name}),
-                    .int => try output.writer(self.allocator).print("        try values.append(allocator, try std.fmt.allocPrint(allocator, \"{{d}}\", .{{self.{s}}}));\n", .{field.name}),
+                    .string => try output.writer(self.allocator).print("        try values.writer(allocator).print(\"'{{s}}'\", .{{self.{s}}});\n", .{field.name}),
+                    .int => try output.writer(self.allocator).print("        try values.writer(allocator).print(\"{{d}}\", .{{self.{s}}});\n", .{field.name}),
                     .boolean => try output.writer(self.allocator).print("        try values.append(allocator, if (self.{s}) \"true\" else \"false\");\n", .{field.name}),
-                    .datetime => try output.writer(self.allocator).print("        try values.append(allocator, try std.fmt.allocPrint(allocator, \"to_timestamp({{d}})\", .{{self.{s}}}));\n", .{field.name}),
+                    .datetime => try output.writer(self.allocator).print("        try values.writer(allocator).print(\"to_timestamp({{d}})\", .{{self.{s}}});\n", .{field.name}),
                     .model_ref, .model_array => {
                         // Relationship fields should be skipped above, but handle gracefully
                         try output.appendSlice(self.allocator, "        // Relationship field - handled separately\n");
@@ -203,10 +203,10 @@ pub const Generator = struct {
             try output.writer(self.allocator).print("        if (self.{s}) |val| {{\n", .{field.name});
 
             switch (field.type) {
-                .string => try output.appendSlice(self.allocator, "            try values.append(allocator, try std.fmt.allocPrint(allocator, \"'{s}'\", .{val}));\n"),
-                .int => try output.appendSlice(self.allocator, "            try values.append(allocator, try std.fmt.allocPrint(allocator, \"{d}\", .{val}));\n"),
-                .boolean => try output.appendSlice(self.allocator, "            try values.append(allocator, if (val) \"true\" else \"false\");\n"),
-                .datetime => try output.appendSlice(self.allocator, "            try values.append(allocator, try std.fmt.allocPrint(allocator, \"to_timestamp({d})\", .{val}));\n"),
+                .string => try output.appendSlice(self.allocator, "            try values.writer(allocator).print(\"'{s}'\", .{val});\n"),
+                .int => try output.appendSlice(self.allocator, "            try values.writer(allocator).print(\"{d}\", .{val});\n"),
+                .boolean => try output.appendSlice(self.allocator, "            try values.appendSlice(allocator, if (val) \"true\" else \"false\");\n"),
+                .datetime => try output.appendSlice(self.allocator, "            try values.writer(allocator).print(\"to_timestamp({d})\", .{val});\n"),
                 .model_ref, .model_array => {
                     // Relationship fields should be skipped above, but handle gracefully
                     try output.appendSlice(self.allocator, "            // Relationship field - handled separately\n");
@@ -214,7 +214,7 @@ pub const Generator = struct {
             }
 
             try output.appendSlice(self.allocator, "        } else {\n");
-            try output.appendSlice(self.allocator, "            try values.append(allocator, \"NULL\");\n");
+            try output.appendSlice(self.allocator, "            try values.appendSlice(allocator, \"NULL\");\n");
             try output.appendSlice(self.allocator, "        }\n");
         }
 
@@ -373,15 +373,11 @@ pub const Generator = struct {
         try output.appendSlice(self.allocator, "};\n");
 
         try output.appendSlice(self.allocator, "        const values = try data.toSqlValues(self.allocator);\n");
-        try output.appendSlice(self.allocator, "        defer {\n");
-        try output.appendSlice(self.allocator, "            for (values) |val| self.allocator.free(val);\n");
-        try output.appendSlice(self.allocator, "            self.allocator.free(values);\n");
-        try output.appendSlice(self.allocator, "        }\n\n");
+        try output.appendSlice(self.allocator, "        defer self.allocator.free(values);\n");
 
         try output.appendSlice(self.allocator, "        const key_list = std.mem.join(self.allocator, \", \", &columns) catch \"\";\n");
         try output.appendSlice(self.allocator, "        defer self.allocator.free(key_list);\n");
-        try output.appendSlice(self.allocator, "        const val_list = std.mem.join(self.allocator, \", \", values) catch \"\";\n");
-        try output.appendSlice(self.allocator, "        defer self.allocator.free(val_list);\n\n");
+        try output.appendSlice(self.allocator, "        const val_list = values;\n");
 
         try output.writer(self.allocator).print("        const query = try std.fmt.allocPrint(self.allocator, \n", .{});
         try output.writer(self.allocator).print("            \"INSERT INTO \\\"{s}\\\" ({{s}}) VALUES ({{s}});\",\n", .{table_name.value});
