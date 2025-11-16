@@ -23,7 +23,11 @@ pub fn main() !void {
     )) catch |err| {
         std.debug.print("Failed to create user: {}\n", .{err});
     };
-    _ = try client.user.findMany(.{ .where = .{.email = .{ .contains = "alice" } } });
+    const records = try client.user.findMany(.{ .where = .{.email = .{ .contains = "alice" } } });
+    for (records) |record| {
+        std.debug.print("User: id={}, email={s}\n", .{record.id, record.email});
+    }
+    defer alloc.free(records);
  
 }
 
