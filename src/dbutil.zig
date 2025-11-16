@@ -33,7 +33,7 @@ pub fn generateMigrationSql(allocator: std.mem.Allocator, schema: *const types.S
             const column_name = field.getColumnName();
             const sql_type = field.type.toSqlType();
 
-            try writer.print("    \"{s}\" {s}", .{ column_name, sql_type });
+            try writer.print("    {s} {s}", .{ column_name, sql_type });
 
             // Add constraints
             if (field.isPrimaryKey()) {
@@ -126,7 +126,7 @@ pub fn generatePushSql(allocator: std.mem.Allocator, schema: *const types.Schema
             const column_name = field.getColumnName();
             const sql_type = field.type.toSqlType();
 
-            try writer.print("    \"{s}\" {s}", .{ column_name, sql_type });
+            try writer.print("    {s} {s}", .{ column_name, sql_type });
 
             if (field.isPrimaryKey()) {
                 try writer.writeAll(" PRIMARY KEY");

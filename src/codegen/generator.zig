@@ -373,7 +373,7 @@ pub const Generator = struct {
             if (field.type.isRelation()) continue; // Skip relationship fields
             if (!first) try output.appendSlice(self.allocator, ", ");
             first = false;
-            try output.writer(self.allocator).print("\"\\\"{s}\\\"\"", .{field.getColumnName()});
+            try output.writer(self.allocator).print("\"{s}\"", .{field.getColumnName()});
         }
         try output.appendSlice(self.allocator, "};\n");
 
