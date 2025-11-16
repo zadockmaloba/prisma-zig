@@ -234,7 +234,7 @@ pub const UserOperations = struct {
 
     /// Create a new User record
     pub fn create(self: *@This(), data: User) !User {
-        const columns = [_][]const u8{"\"id\"", "\"email\"", "\"name\"", "\"createdAt\"", "\"updatedAt\""};
+        const columns = [_][]const u8{"id", "email", "name", "createdAt", "updatedAt"};
         const values = try data.toSqlValues(self.allocator);
         defer self.allocator.free(values);
         const key_list = std.mem.join(self.allocator, ", ", &columns) catch "";
@@ -325,7 +325,7 @@ pub const PostOperations = struct {
 
     /// Create a new Post record
     pub fn create(self: *@This(), data: Post) !Post {
-        const columns = [_][]const u8{"\"id\"", "\"title\"", "\"content\"", "\"published\"", "\"authorId\"", "\"createdAt\""};
+        const columns = [_][]const u8{"id", "title", "content", "published", "authorId", "createdAt"};
         const values = try data.toSqlValues(self.allocator);
         defer self.allocator.free(values);
         const key_list = std.mem.join(self.allocator, ", ", &columns) catch "";
@@ -414,7 +414,7 @@ pub const ProfileOperations = struct {
 
     /// Create a new Profile record
     pub fn create(self: *@This(), data: Profile) !Profile {
-        const columns = [_][]const u8{"\"id\"", "\"bio\"", "\"user_id\""};
+        const columns = [_][]const u8{"id", "bio", "user_id"};
         const values = try data.toSqlValues(self.allocator);
         defer self.allocator.free(values);
         const key_list = std.mem.join(self.allocator, ", ", &columns) catch "";
