@@ -26,6 +26,7 @@ pub fn build(b: *std.Build) void {
     });
 
     exe_mod.addImport("libpq_zig", libpq_zig.module("libpq_zig"));
+    exe_mod.addImport("datetime", libpq_zig.module("datetime"));
 
     mod.addIncludePath(b.path("zig-out/include/"));
     mod.addIncludePath(b.path("zig-out/include/libpq/"));

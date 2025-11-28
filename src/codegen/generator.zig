@@ -63,6 +63,7 @@ pub const Generator = struct {
         const header =
             \\const std = @import("std");
             \\const psql = @import("libpq_zig");
+            \\const dt = @import("datetime");
             \\
             \\pub const Connection = psql.Connection;
             \\pub const QueryBuilder = psql.QueryBuilder;
@@ -445,7 +446,7 @@ pub const Generator = struct {
                         try output.writer(self.allocator).print("            records[idx].{s} = try row.getOpt(\"{s}\", bool);\n", .{ field.name, column_name });
                     },
                     .datetime => {
-                        try output.writer(self.allocator).print("            records[idx].{s} = try row.getOpt(\"{s}\", i64);\n", .{ field.name, column_name });
+                        try output.writer(self.allocator).print("            records[idx].{s} = try dt.unixTimeFromISO8601( try row.getOpt(\"{s}\", []const u8) );\n", .{ field.name, column_name });
                     },
                     else => {},
                 }
@@ -462,7 +463,7 @@ pub const Generator = struct {
                         try output.writer(self.allocator).print("            records[idx].{s} = try row.get(\"{s}\", bool);\n", .{ field.name, column_name });
                     },
                     .datetime => {
-                        try output.writer(self.allocator).print("            records[idx].{s} = try row.get(\"{s}\", i64);\n", .{ field.name, column_name });
+                        try output.writer(self.allocator).print("            records[idx].{s} = try dt.unixTimeFromISO8601( try row.get(\"{s}\", []const u8) );\n", .{ field.name, column_name });
                     },
                     else => {},
                 }

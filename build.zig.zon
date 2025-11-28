@@ -5,8 +5,8 @@
     .minimum_zig_version = "0.15.1",
     .dependencies = .{
         .libpq_zig = .{
-            .url = "https://github.com/zadockmaloba/libpq-zig/archive/refs/tags/0.1.3.zip",
-            .hash = "libpq_zig-0.1.3-sTETDZP8AACuHxCh8zCOtXYvR73GcJ5Qbz11WmsM6AE6",
+            .url = "https://github.com/zadockmaloba/libpq-zig/archive/refs/tags/0.1.4.zip",
+            .hash = "libpq_zig-0.1.4-sTETDVYVAQCqi1UwAEZGBoKownk5Rgjf5sX-ocVgtPfe",
         },
     },
     .paths = .{

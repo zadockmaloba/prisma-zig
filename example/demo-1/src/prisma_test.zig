@@ -1,5 +1,6 @@
 const std = @import("std");
 const psql = @import("libpq_zig");
+const dt = @import("datetime");
 
 pub const Connection = psql.Connection;
 pub const QueryBuilder = psql.QueryBuilder;
@@ -271,8 +272,8 @@ pub const UserOperations = struct {
             records[idx].id = try row.get("id", i32);
             records[idx].email = try row.get("email", []const u8);
             records[idx].name = try row.getOpt("name", []const u8);
-            records[idx].createdAt = try row.get("createdAt", i64);
-            records[idx].updatedAt = try row.get("updatedAt", i64);
+            records[idx].createdAt = try dt.unixTimeFromISO8601( try row.get("createdAt", []const u8) );
+            records[idx].updatedAt = try dt.unixTimeFromISO8601( try row.get("updatedAt", []const u8) );
         }
 
         return records;
@@ -364,7 +365,7 @@ pub const PostOperations = struct {
             records[idx].content = try row.getOpt("content", []const u8);
             records[idx].published = try row.get("published", bool);
             records[idx].authorId = try row.get("authorId", i32);
-            records[idx].createdAt = try row.get("createdAt", i64);
+            records[idx].createdAt = try dt.unixTimeFromISO8601( try row.get("createdAt", []const u8) );
         }
 
         return records;

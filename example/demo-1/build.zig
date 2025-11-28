@@ -32,6 +32,7 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
             .imports = &.{
                 .{ .name = "libpq_zig", .module = libpq_zig.module("libpq_zig") },
+                .{ .name = "datetime", .module = libpq_zig.module("datetime") },
             },
         }),
     });
