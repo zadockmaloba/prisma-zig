@@ -386,14 +386,65 @@ pub const Generator = struct {
         try output.appendSlice(self.allocator, "        const val_list = values;\n");
 
         try output.writer(self.allocator).print("        const query = try std.fmt.allocPrint(self.allocator, \n", .{});
-        try output.writer(self.allocator).print("            \"INSERT INTO \\\"{s}\\\" ({{s}}) VALUES ({{s}});\",\n", .{table_name.value});
+        try output.writer(self.allocator).print("            \"INSERT INTO \\\"{s}\\\" ({{s}}) VALUES ({{s}}) RETURNING *;\",\n", .{table_name.value});
         try output.appendSlice(self.allocator, "            .{ key_list, val_list }\n");
         try output.appendSlice(self.allocator, "        );\n");
         try output.appendSlice(self.allocator, "        defer self.allocator.free(query);\n");
 
-        try output.appendSlice(self.allocator, "        _ = try self.connection.execSafe(query);\n");
-        try output.appendSlice(self.allocator, "        // TODO: Parse result and return the created record\n");
-        try output.appendSlice(self.allocator, "        return data; // Placeholder\n");
+        try output.appendSlice(self.allocator, "        var result = try self.connection.execSafe(query);\n");
+        try output.appendSlice(self.allocator, "        \n");
+        try output.appendSlice(self.allocator, "        if (result.next()) |row| {\n");
+        try output.appendSlice(self.allocator, "            var record: ");
+        try output.writer(self.allocator).print("{s} = undefined;\n", .{model.name});
+
+        // Generate field parsing for the returned record
+        for (model.fields.items) |*field| {
+            if (field.type.isRelation()) continue;
+
+            const column_name = field.getColumnName();
+
+            if (field.optional) {
+                // Optional field handling
+                switch (field.type) {
+                    .string => {
+                        try output.writer(self.allocator).print("            record.{s} = try row.getOpt(\"{s}\", []const u8);\n", .{ field.name, column_name });
+                    },
+                    .int => {
+                        try output.writer(self.allocator).print("            record.{s} = try row.getOpt(\"{s}\", i32);\n", .{ field.name, column_name });
+                    },
+                    .boolean => {
+                        try output.writer(self.allocator).print("            record.{s} = try row.getOpt(\"{s}\", bool);\n", .{ field.name, column_name });
+                    },
+                    .datetime => {
+                        try output.writer(self.allocator).print("            const {s}_str = try row.getOpt(\"{s}\", []const u8);\n", .{ field.name, column_name });
+                        try output.writer(self.allocator).print("            record.{s} = if ({s}_str) |str| try dt.unixTimeFromISO8601(str) else null;\n", .{ field.name, field.name });
+                    },
+                    else => {},
+                }
+            } else {
+                // Non-optional field handling
+                switch (field.type) {
+                    .string => {
+                        try output.writer(self.allocator).print("            record.{s} = try row.get(\"{s}\", []const u8);\n", .{ field.name, column_name });
+                    },
+                    .int => {
+                        try output.writer(self.allocator).print("            record.{s} = try row.get(\"{s}\", i32);\n", .{ field.name, column_name });
+                    },
+                    .boolean => {
+                        try output.writer(self.allocator).print("            record.{s} = try row.get(\"{s}\", bool);\n", .{ field.name, column_name });
+                    },
+                    .datetime => {
+                        try output.writer(self.allocator).print("            record.{s} = try dt.unixTimeFromISO8601(try row.get(\"{s}\", []const u8));\n", .{ field.name, column_name });
+                    },
+                    else => {},
+                }
+            }
+        }
+
+        try output.appendSlice(self.allocator, "            return record;\n");
+        try output.appendSlice(self.allocator, "        }\n");
+        try output.appendSlice(self.allocator, "        \n");
+        try output.appendSlice(self.allocator, "        return data; // Fallback if no result returned\n");
         try output.appendSlice(self.allocator, "    }\n\n");
     }
 

@@ -242,13 +242,23 @@ pub const UserOperations = struct {
         defer self.allocator.free(key_list);
         const val_list = values;
         const query = try std.fmt.allocPrint(self.allocator, 
-            "INSERT INTO \"user\" ({s}) VALUES ({s});",
+            "INSERT INTO \"user\" ({s}) VALUES ({s}) RETURNING *;",
             .{ key_list, val_list }
         );
         defer self.allocator.free(query);
-        _ = try self.connection.execSafe(query);
-        // TODO: Parse result and return the created record
-        return data; // Placeholder
+        var result = try self.connection.execSafe(query);
+        
+        if (result.next()) |row| {
+            var record: User = undefined;
+            record.id = try row.get("id", i32);
+            record.email = try row.get("email", []const u8);
+            record.name = try row.getOpt("name", []const u8);
+            record.createdAt = try dt.unixTimeFromISO8601(try row.get("createdAt", []const u8));
+            record.updatedAt = try dt.unixTimeFromISO8601(try row.get("updatedAt", []const u8));
+            return record;
+        }
+        
+        return data; // Fallback if no result returned
     }
 
     /// Find multiple User records
@@ -579,13 +589,24 @@ pub const PostOperations = struct {
         defer self.allocator.free(key_list);
         const val_list = values;
         const query = try std.fmt.allocPrint(self.allocator, 
-            "INSERT INTO \"posts\" ({s}) VALUES ({s});",
+            "INSERT INTO \"posts\" ({s}) VALUES ({s}) RETURNING *;",
             .{ key_list, val_list }
         );
         defer self.allocator.free(query);
-        _ = try self.connection.execSafe(query);
-        // TODO: Parse result and return the created record
-        return data; // Placeholder
+        var result = try self.connection.execSafe(query);
+        
+        if (result.next()) |row| {
+            var record: Post = undefined;
+            record.id = try row.get("id", i32);
+            record.title = try row.get("title", []const u8);
+            record.content = try row.getOpt("content", []const u8);
+            record.published = try row.get("published", bool);
+            record.authorId = try row.get("authorId", i32);
+            record.createdAt = try dt.unixTimeFromISO8601(try row.get("createdAt", []const u8));
+            return record;
+        }
+        
+        return data; // Fallback if no result returned
     }
 
     /// Find multiple Post records
@@ -951,13 +972,21 @@ pub const ProfileOperations = struct {
         defer self.allocator.free(key_list);
         const val_list = values;
         const query = try std.fmt.allocPrint(self.allocator, 
-            "INSERT INTO \"profile\" ({s}) VALUES ({s});",
+            "INSERT INTO \"profile\" ({s}) VALUES ({s}) RETURNING *;",
             .{ key_list, val_list }
         );
         defer self.allocator.free(query);
-        _ = try self.connection.execSafe(query);
-        // TODO: Parse result and return the created record
-        return data; // Placeholder
+        var result = try self.connection.execSafe(query);
+        
+        if (result.next()) |row| {
+            var record: Profile = undefined;
+            record.id = try row.get("id", i32);
+            record.bio = try row.getOpt("bio", []const u8);
+            record.userId = try row.get("user_id", i32);
+            return record;
+        }
+        
+        return data; // Fallback if no result returned
     }
 
     /// Find multiple Profile records
