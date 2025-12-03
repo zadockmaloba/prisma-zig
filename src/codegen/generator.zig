@@ -746,13 +746,62 @@ pub const Generator = struct {
     /// Generate DELETE operation
     fn generateDeleteOperation(self: *Generator, model: *const PrismaModel) CodeGenError!void {
         var output = &self.output;
+        const table_name = try model.getTableName(self.allocator);
+        defer if (table_name.heap_allocated) self.allocator.free(table_name.value);
 
         try output.writer(self.allocator).print("    /// Delete a {s} record\n", .{model.name});
         try output.writer(self.allocator).print("    pub fn delete(self: *@This(), options: struct {{ where: {s}Where }}) !void {{\n", .{model.name});
 
-        try output.appendSlice(self.allocator, "        // TODO: Implement delete logic\n");
-        try output.appendSlice(self.allocator, "        _ = options;\n");
-        try output.appendSlice(self.allocator, "        _ = self;\n");
+        try output.appendSlice(self.allocator, "        var query_builder = QueryBuilder.init(self.allocator);\n");
+        try output.appendSlice(self.allocator, "        defer query_builder.deinit();\n");
+        try output.writer(self.allocator).print("        _ = try query_builder.sql(\"DELETE FROM \\\"{s}\\\" WHERE \");\n", .{table_name.value});
+        try output.appendSlice(self.allocator, "        var first_condition = true;\n\n");
+
+        // Generate WHERE clause for all fields
+        try output.appendSlice(self.allocator, "        // Build WHERE clause\n");
+        for (model.fields.items) |*field| {
+            if (field.type.isRelation()) continue;
+
+            const column_name = field.getColumnName();
+
+            try output.writer(self.allocator).print("        if (options.where.{s}) |filter| {{\n", .{field.name});
+            try output.appendSlice(self.allocator, "            if (filter.equals) |value| {\n");
+            try output.appendSlice(self.allocator, "                if (!first_condition) {\n");
+            try output.appendSlice(self.allocator, "                    _ = try query_builder.sql(\" AND \");\n");
+            try output.appendSlice(self.allocator, "                }\n");
+            try output.appendSlice(self.allocator, "                first_condition = false;\n");
+
+            switch (field.type) {
+                .string => {
+                    try output.writer(self.allocator).print("                _ = try query_builder.sql(\"\\\"{s}\\\" = '\");\n", .{column_name});
+                    try output.appendSlice(self.allocator, "                _ = try query_builder.sql(value);\n");
+                    try output.appendSlice(self.allocator, "                _ = try query_builder.sql(\"'\");\n");
+                },
+                .int => {
+                    try output.appendSlice(self.allocator, "                const val_str = try std.fmt.allocPrint(self.allocator, \"{d}\", .{value});\n");
+                    try output.appendSlice(self.allocator, "                defer self.allocator.free(val_str);\n");
+                    try output.writer(self.allocator).print("                _ = try query_builder.sql(\"\\\"{s}\\\" = \");\n", .{column_name});
+                    try output.appendSlice(self.allocator, "                _ = try query_builder.sql(val_str);\n");
+                },
+                .boolean => {
+                    try output.writer(self.allocator).print("                _ = try query_builder.sql(\"\\\"{s}\\\" = \");\n", .{column_name});
+                    try output.appendSlice(self.allocator, "                _ = try query_builder.sql(if (value) \"true\" else \"false\");\n");
+                },
+                .datetime => {
+                    try output.appendSlice(self.allocator, "                const val_str = try std.fmt.allocPrint(self.allocator, \"to_timestamp({d})\", .{value});\n");
+                    try output.appendSlice(self.allocator, "                defer self.allocator.free(val_str);\n");
+                    try output.writer(self.allocator).print("                _ = try query_builder.sql(\"\\\"{s}\\\" = \");\n", .{column_name});
+                    try output.appendSlice(self.allocator, "                _ = try query_builder.sql(val_str);\n");
+                },
+                else => {},
+            }
+
+            try output.appendSlice(self.allocator, "            }\n");
+            try output.appendSlice(self.allocator, "        }\n");
+        }
+
+        try output.appendSlice(self.allocator, "\n        const query = query_builder.build();\n");
+        try output.appendSlice(self.allocator, "        _ = try self.connection.execSafe(query);\n");
         try output.appendSlice(self.allocator, "    }\n\n");
     }
 

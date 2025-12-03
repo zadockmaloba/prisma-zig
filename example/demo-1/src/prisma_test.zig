@@ -478,9 +478,73 @@ pub const UserOperations = struct {
 
     /// Delete a User record
     pub fn delete(self: *@This(), options: struct { where: UserWhere }) !void {
-        // TODO: Implement delete logic
-        _ = options;
-        _ = self;
+        var query_builder = QueryBuilder.init(self.allocator);
+        defer query_builder.deinit();
+        _ = try query_builder.sql("DELETE FROM \"user\" WHERE ");
+        var first_condition = true;
+
+        // Build WHERE clause
+        if (options.where.id) |filter| {
+            if (filter.equals) |value| {
+                if (!first_condition) {
+                    _ = try query_builder.sql(" AND ");
+                }
+                first_condition = false;
+                const val_str = try std.fmt.allocPrint(self.allocator, "{d}", .{value});
+                defer self.allocator.free(val_str);
+                _ = try query_builder.sql("\"id\" = ");
+                _ = try query_builder.sql(val_str);
+            }
+        }
+        if (options.where.email) |filter| {
+            if (filter.equals) |value| {
+                if (!first_condition) {
+                    _ = try query_builder.sql(" AND ");
+                }
+                first_condition = false;
+                _ = try query_builder.sql("\"email\" = '");
+                _ = try query_builder.sql(value);
+                _ = try query_builder.sql("'");
+            }
+        }
+        if (options.where.name) |filter| {
+            if (filter.equals) |value| {
+                if (!first_condition) {
+                    _ = try query_builder.sql(" AND ");
+                }
+                first_condition = false;
+                _ = try query_builder.sql("\"name\" = '");
+                _ = try query_builder.sql(value);
+                _ = try query_builder.sql("'");
+            }
+        }
+        if (options.where.createdAt) |filter| {
+            if (filter.equals) |value| {
+                if (!first_condition) {
+                    _ = try query_builder.sql(" AND ");
+                }
+                first_condition = false;
+                const val_str = try std.fmt.allocPrint(self.allocator, "to_timestamp({d})", .{value});
+                defer self.allocator.free(val_str);
+                _ = try query_builder.sql("\"createdAt\" = ");
+                _ = try query_builder.sql(val_str);
+            }
+        }
+        if (options.where.updatedAt) |filter| {
+            if (filter.equals) |value| {
+                if (!first_condition) {
+                    _ = try query_builder.sql(" AND ");
+                }
+                first_condition = false;
+                const val_str = try std.fmt.allocPrint(self.allocator, "to_timestamp({d})", .{value});
+                defer self.allocator.free(val_str);
+                _ = try query_builder.sql("\"updatedAt\" = ");
+                _ = try query_builder.sql(val_str);
+            }
+        }
+
+        const query = query_builder.build();
+        _ = try self.connection.execSafe(query);
     }
 
 };
@@ -779,9 +843,83 @@ pub const PostOperations = struct {
 
     /// Delete a Post record
     pub fn delete(self: *@This(), options: struct { where: PostWhere }) !void {
-        // TODO: Implement delete logic
-        _ = options;
-        _ = self;
+        var query_builder = QueryBuilder.init(self.allocator);
+        defer query_builder.deinit();
+        _ = try query_builder.sql("DELETE FROM \"posts\" WHERE ");
+        var first_condition = true;
+
+        // Build WHERE clause
+        if (options.where.id) |filter| {
+            if (filter.equals) |value| {
+                if (!first_condition) {
+                    _ = try query_builder.sql(" AND ");
+                }
+                first_condition = false;
+                const val_str = try std.fmt.allocPrint(self.allocator, "{d}", .{value});
+                defer self.allocator.free(val_str);
+                _ = try query_builder.sql("\"id\" = ");
+                _ = try query_builder.sql(val_str);
+            }
+        }
+        if (options.where.title) |filter| {
+            if (filter.equals) |value| {
+                if (!first_condition) {
+                    _ = try query_builder.sql(" AND ");
+                }
+                first_condition = false;
+                _ = try query_builder.sql("\"title\" = '");
+                _ = try query_builder.sql(value);
+                _ = try query_builder.sql("'");
+            }
+        }
+        if (options.where.content) |filter| {
+            if (filter.equals) |value| {
+                if (!first_condition) {
+                    _ = try query_builder.sql(" AND ");
+                }
+                first_condition = false;
+                _ = try query_builder.sql("\"content\" = '");
+                _ = try query_builder.sql(value);
+                _ = try query_builder.sql("'");
+            }
+        }
+        if (options.where.published) |filter| {
+            if (filter.equals) |value| {
+                if (!first_condition) {
+                    _ = try query_builder.sql(" AND ");
+                }
+                first_condition = false;
+                _ = try query_builder.sql("\"published\" = ");
+                _ = try query_builder.sql(if (value) "true" else "false");
+            }
+        }
+        if (options.where.authorId) |filter| {
+            if (filter.equals) |value| {
+                if (!first_condition) {
+                    _ = try query_builder.sql(" AND ");
+                }
+                first_condition = false;
+                const val_str = try std.fmt.allocPrint(self.allocator, "{d}", .{value});
+                defer self.allocator.free(val_str);
+                _ = try query_builder.sql("\"authorId\" = ");
+                _ = try query_builder.sql(val_str);
+            }
+        }
+        if (options.where.createdAt) |filter| {
+            if (filter.equals) |value| {
+                if (!first_condition) {
+                    _ = try query_builder.sql(" AND ");
+                }
+                first_condition = false;
+                const val_str = try std.fmt.allocPrint(self.allocator, "to_timestamp({d})", .{value});
+                defer self.allocator.free(val_str);
+                _ = try query_builder.sql("\"createdAt\" = ");
+                _ = try query_builder.sql(val_str);
+            }
+        }
+
+        const query = query_builder.build();
+        _ = try self.connection.execSafe(query);
     }
 
 };
@@ -984,9 +1122,50 @@ pub const ProfileOperations = struct {
 
     /// Delete a Profile record
     pub fn delete(self: *@This(), options: struct { where: ProfileWhere }) !void {
-        // TODO: Implement delete logic
-        _ = options;
-        _ = self;
+        var query_builder = QueryBuilder.init(self.allocator);
+        defer query_builder.deinit();
+        _ = try query_builder.sql("DELETE FROM \"profile\" WHERE ");
+        var first_condition = true;
+
+        // Build WHERE clause
+        if (options.where.id) |filter| {
+            if (filter.equals) |value| {
+                if (!first_condition) {
+                    _ = try query_builder.sql(" AND ");
+                }
+                first_condition = false;
+                const val_str = try std.fmt.allocPrint(self.allocator, "{d}", .{value});
+                defer self.allocator.free(val_str);
+                _ = try query_builder.sql("\"id\" = ");
+                _ = try query_builder.sql(val_str);
+            }
+        }
+        if (options.where.bio) |filter| {
+            if (filter.equals) |value| {
+                if (!first_condition) {
+                    _ = try query_builder.sql(" AND ");
+                }
+                first_condition = false;
+                _ = try query_builder.sql("\"bio\" = '");
+                _ = try query_builder.sql(value);
+                _ = try query_builder.sql("'");
+            }
+        }
+        if (options.where.userId) |filter| {
+            if (filter.equals) |value| {
+                if (!first_condition) {
+                    _ = try query_builder.sql(" AND ");
+                }
+                first_condition = false;
+                const val_str = try std.fmt.allocPrint(self.allocator, "{d}", .{value});
+                defer self.allocator.free(val_str);
+                _ = try query_builder.sql("\"user_id\" = ");
+                _ = try query_builder.sql(val_str);
+            }
+        }
+
+        const query = query_builder.build();
+        _ = try self.connection.execSafe(query);
     }
 
 };

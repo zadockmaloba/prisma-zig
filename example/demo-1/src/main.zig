@@ -69,6 +69,33 @@ pub fn main() !void {
     if (verified) |user| {
         std.debug.print("Verified update: id={}, email={s}, name={?s}\n", .{ user.id, user.email, user.name });
     }
+
+    // Demo: Create another user for delete test
+    std.debug.print("\n=== delete Demo ===\n", .{});
+    _ = client.user.create(.init(
+        999,
+        "temp@example.com",
+    )) catch |err| {
+        std.debug.print("Failed to create temp user: {}\n", .{err});
+    };
+
+    // Verify it exists
+    const temp_user = try client.user.findUnique(.{ .where = .{ .id = .{ .equals = 999 } } });
+    if (temp_user) |user| {
+        std.debug.print("Created temp user: id={}, email={s}\n", .{ user.id, user.email });
+    }
+
+    // Delete the temp user
+    try client.user.delete(.{ .where = .{ .id = .{ .equals = 999 } } });
+    std.debug.print("Deleted user with id=999\n", .{});
+
+    // Verify it's gone
+    const deleted_user = try client.user.findUnique(.{ .where = .{ .id = .{ .equals = 999 } } });
+    if (deleted_user) |user| {
+        std.debug.print("User still exists: id={}, email={s}\n", .{ user.id, user.email });
+    } else {
+        std.debug.print("Confirmed: User with id=999 has been deleted\n", .{});
+    }
 }
 
 test "simple test" {
