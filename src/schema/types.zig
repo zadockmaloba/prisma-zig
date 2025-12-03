@@ -467,6 +467,7 @@ pub const ParseError = error{
     DuplicateField,
     InvalidDefaultValue,
     OutOfMemory,
+    SkipAttribute,
 };
 
 // Tests

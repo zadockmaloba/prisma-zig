@@ -35,6 +35,7 @@ const TokenType = enum {
     equals, // =
     comma, // ,
     colon, // :
+    dot, // .
     newline,
 
     // Special
@@ -85,6 +86,7 @@ const Lexer = struct {
             '=' => self.makeToken(.equals),
             ',' => self.makeToken(.comma),
             ':' => self.makeToken(.colon),
+            '.' => self.makeToken(.dot),
             '\n' => self.makeTokenWithColumn(.newline, start_column),
             '"' => self.string(),
             else => {
@@ -385,7 +387,12 @@ pub const Parser = struct {
 
         // Parse attributes
         while (self.current_token.type == .at_symbol) {
-            const attr = try self.parseAttribute();
+            const attr = self.parseAttribute() catch |err| {
+                if (err == error.SkipAttribute) {
+                    continue;
+                }
+                return err;
+            };
             try field.attributes.append(self.allocator, attr);
         }
 
@@ -406,10 +413,36 @@ pub const Parser = struct {
         const attr_name_token = try self.consume(.identifier, "Expected attribute name");
         const attr_name = attr_name_token.lexeme;
 
+        // Handle @db.* attributes (skip them for now as they're database-specific)
+        if (std.mem.eql(u8, attr_name, "db")) {
+            if (self.match(.dot)) {
+                _ = try self.consume(.identifier, "Expected db attribute name");
+                // Skip parameters if present
+                if (self.match(.left_paren)) {
+                    var paren_depth: i32 = 1;
+                    while (!self.isAtEnd() and paren_depth > 0) {
+                        const token = self.current_token;
+                        self.advance();
+                        if (token.type == .left_paren) {
+                            paren_depth += 1;
+                        } else if (token.type == .right_paren) {
+                            paren_depth -= 1;
+                        }
+                    }
+                }
+            }
+            // Return a placeholder - these are database-specific hints
+            return error.SkipAttribute;
+        }
+
         if (std.mem.eql(u8, attr_name, "id")) {
             return .id;
         } else if (std.mem.eql(u8, attr_name, "unique")) {
             return .unique;
+        } else if (std.mem.eql(u8, attr_name, "updatedAt")) {
+            // @updatedAt is a special attribute for auto-updating timestamps
+            // We can treat it similarly to @default(now()) for now
+            return error.SkipAttribute;
         } else if (std.mem.eql(u8, attr_name, "default")) {
             _ = try self.consume(.left_paren, "Expected '('");
 
@@ -424,12 +457,40 @@ pub const Parser = struct {
                 self.advance();
                 value = .{ .value = token.lexeme };
             } else if (self.current_token.type == .identifier) {
-                // Function call like autoincrement(), now(), etc.
+                // Function call like autoincrement(), now(), dbgenerated(), etc.
                 const token = self.current_token;
                 self.advance();
                 if (self.match(.left_paren)) {
-                    _ = try self.consume(.right_paren, "Expected ')'");
-                    value = .{ .value = try std.fmt.allocPrint(self.allocator, "{s}()", .{token.lexeme}), .heap_allocated = true, .allocator = self.allocator };
+                    // Check if there are nested parameters like dbgenerated("gen_random_uuid()")
+                    var func_content: std.ArrayList(u8) = .empty;
+                    defer func_content.deinit(self.allocator);
+
+                    var paren_depth: i32 = 1;
+                    while (!self.isAtEnd() and paren_depth > 0) {
+                        const inner_token = self.current_token;
+                        if (inner_token.type == .left_paren) {
+                            paren_depth += 1;
+                            try func_content.append(self.allocator, '(');
+                        } else if (inner_token.type == .right_paren) {
+                            paren_depth -= 1;
+                            if (paren_depth > 0) {
+                                try func_content.append(self.allocator, ')');
+                            }
+                        } else if (inner_token.type == .string_literal) {
+                            try func_content.appendSlice(self.allocator, inner_token.lexeme);
+                        } else if (inner_token.type == .identifier) {
+                            try func_content.appendSlice(self.allocator, inner_token.lexeme);
+                        } else if (inner_token.type == .comma) {
+                            try func_content.append(self.allocator, ',');
+                        }
+                        self.advance();
+                    }
+
+                    if (func_content.items.len > 0) {
+                        value = .{ .value = try std.fmt.allocPrint(self.allocator, "{s}({s})", .{ token.lexeme, func_content.items }), .heap_allocated = true, .allocator = self.allocator };
+                    } else {
+                        value = .{ .value = try std.fmt.allocPrint(self.allocator, "{s}()", .{token.lexeme}), .heap_allocated = true, .allocator = self.allocator };
+                    }
                 } else {
                     value = .{ .value = token.lexeme };
                 }
@@ -452,8 +513,7 @@ pub const Parser = struct {
 
             var relation = types.RelationAttribute.init();
 
-            // Parse relation content - this is a simplified version
-            // Real Prisma relations can be quite complex: @relation(fields: [authorId], references: [id])
+            // Parse relation content - handle fields, references, onDelete, onUpdate
             while (!self.isAtEnd() and self.current_token.type != .right_paren) {
                 if (self.current_token.type == .identifier) {
                     const key = self.current_token.lexeme;
@@ -474,6 +534,13 @@ pub const Parser = struct {
                                         bracket_depth -= 1;
                                     }
                                 }
+                            }
+                        }
+                    } else if (std.mem.eql(u8, key, "onDelete") or std.mem.eql(u8, key, "onUpdate")) {
+                        // Skip onDelete/onUpdate actions like NoAction, Cascade, SetNull
+                        if (self.match(.colon)) {
+                            if (self.current_token.type == .identifier) {
+                                self.advance(); // Skip the action name
                             }
                         }
                     }
