@@ -51,18 +51,14 @@ pub fn main() !void {
 
     // Demo: update - update a user's name
     std.debug.print("\n=== update Demo ===\n", .{});
-    const updated_user = prisma.User{
-        .id = 1,
-        .email = "alice@example.com",
-        .name = "Alice Wonderland",
-        .createdAt = std.time.timestamp(),
-        .updatedAt = std.time.timestamp(),
-    };
-    const result = try client.user.update(.{
+    try client.user.update(.{
         .where = .{ .id = .{ .equals = 1 } },
-        .data = updated_user,
+        .data = .{
+            .name = "Alice Wonderland",
+            .updatedAt = std.time.timestamp(),
+        },
     });
-    std.debug.print("Updated user: id={}, email={s}, name={?s}\n", .{ result.id, result.email, result.name });
+    std.debug.print("Updated user name to 'Alice Wonderland'\n", .{});
 
     // Verify the update
     const verified = try client.user.findUnique(.{ .where = .{ .id = .{ .equals = 1 } } });
