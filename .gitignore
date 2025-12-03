@@ -5,3 +5,5 @@
 [Zz]ig-[Oo]ut/*
 *generated*
 *generated*/*
+.env
+example/demo-1/.env
