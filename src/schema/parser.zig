@@ -457,7 +457,7 @@ pub const Parser = struct {
                 self.advance();
                 value = .{ .value = token.lexeme };
             } else if (self.current_token.type == .identifier) {
-                // Function call like autoincrement(), now(), dbgenerated(), etc.
+                // Function call like autoincrement(), now(), dbgenerated(), uuid(), etc.
                 const token = self.current_token;
                 self.advance();
                 if (self.match(.left_paren)) {
@@ -477,7 +477,10 @@ pub const Parser = struct {
                                 try func_content.append(self.allocator, ')');
                             }
                         } else if (inner_token.type == .string_literal) {
-                            try func_content.appendSlice(self.allocator, inner_token.lexeme);
+                            // For string literals, remove the quotes
+                            // This handles cases like dbgenerated("gen_random_uuid()")
+                            const str_content = inner_token.lexeme[1 .. inner_token.lexeme.len - 1];
+                            try func_content.appendSlice(self.allocator, str_content);
                         } else if (inner_token.type == .identifier) {
                             try func_content.appendSlice(self.allocator, inner_token.lexeme);
                         } else if (inner_token.type == .comma) {
@@ -487,7 +490,12 @@ pub const Parser = struct {
                     }
 
                     if (func_content.items.len > 0) {
-                        value = .{ .value = try std.fmt.allocPrint(self.allocator, "{s}({s})", .{ token.lexeme, func_content.items }), .heap_allocated = true, .allocator = self.allocator };
+                        // Special handling for dbgenerated() - just return the database function
+                        if (std.mem.eql(u8, token.lexeme, "dbgenerated")) {
+                            value = .{ .value = try self.allocator.dupe(u8, func_content.items), .heap_allocated = true, .allocator = self.allocator };
+                        } else {
+                            value = .{ .value = try std.fmt.allocPrint(self.allocator, "{s}({s})", .{ token.lexeme, func_content.items }), .heap_allocated = true, .allocator = self.allocator };
+                        }
                     } else {
                         value = .{ .value = try std.fmt.allocPrint(self.allocator, "{s}()", .{token.lexeme}), .heap_allocated = true, .allocator = self.allocator };
                     }
