@@ -48,6 +48,27 @@ pub fn main() !void {
     } else {
         std.debug.print("User not found by email\n", .{});
     }
+
+    // Demo: update - update a user's name
+    std.debug.print("\n=== update Demo ===\n", .{});
+    const updated_user = prisma.User{
+        .id = 1,
+        .email = "alice@example.com",
+        .name = "Alice Wonderland",
+        .createdAt = std.time.timestamp(),
+        .updatedAt = std.time.timestamp(),
+    };
+    const result = try client.user.update(.{
+        .where = .{ .id = .{ .equals = 1 } },
+        .data = updated_user,
+    });
+    std.debug.print("Updated user: id={}, email={s}, name={?s}\n", .{ result.id, result.email, result.name });
+
+    // Verify the update
+    const verified = try client.user.findUnique(.{ .where = .{ .id = .{ .equals = 1 } } });
+    if (verified) |user| {
+        std.debug.print("Verified update: id={}, email={s}, name={?s}\n", .{ user.id, user.email, user.name });
+    }
 }
 
 test "simple test" {
