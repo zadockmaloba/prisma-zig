@@ -3,7 +3,7 @@
 
 -- CreateTable
 CREATE TABLE "user" (
-    "id" INTEGER PRIMARY KEY,
+    "id" SERIAL PRIMARY KEY,
     "email" TEXT NOT NULL UNIQUE,
     "name" TEXT,
     "createdAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -12,7 +12,7 @@ CREATE TABLE "user" (
 
 -- CreateTable
 CREATE TABLE "posts" (
-    "id" INTEGER PRIMARY KEY,
+    "id" SERIAL PRIMARY KEY,
     "title" TEXT NOT NULL,
     "content" TEXT,
     "published" BOOLEAN NOT NULL DEFAULT FALSE,
@@ -22,7 +22,7 @@ CREATE TABLE "posts" (
 
 -- CreateTable
 CREATE TABLE "profile" (
-    "id" INTEGER PRIMARY KEY,
+    "id" SERIAL PRIMARY KEY,
     "bio" TEXT,
     "user_id" INTEGER NOT NULL UNIQUE
 );

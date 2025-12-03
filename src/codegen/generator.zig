@@ -121,11 +121,15 @@ pub const Generator = struct {
         try self.output.appendSlice(self.allocator, "\n    /// Initialize a new instance\n");
         try self.output.writer(self.allocator).print("    pub fn init(", .{});
 
-        // Add required fields as parameters
+        // Add required fields as parameters (exclude auto-increment primary keys and fields with defaults)
         var first = true;
         for (model.fields.items) |*field| {
-            // Skip relationship fields and optional fields
+            // Skip relationship fields, optional fields, and fields with defaults
             if (field.type.isRelation() or field.optional or field.getDefaultValue() != null) {
+                continue;
+            }
+            // Skip primary keys with autoincrement (they're database-generated)
+            if (field.isPrimaryKey() and field.getDefaultValue() != null) {
                 continue;
             }
             if (!first) try self.output.appendSlice(self.allocator, ", ");
@@ -144,18 +148,16 @@ pub const Generator = struct {
             } else if (!field.optional and field.getDefaultValue() == null) {
                 try self.output.writer(self.allocator).print("            .{s} = {s},\n", .{ field.name, field.name });
             } else if (field.getDefaultValue()) |default_val| {
-                // Handle different default value types
-                const default_expr = if (std.mem.eql(u8, default_val, "now()"))
-                    "std.time.timestamp()"
-                else if (std.mem.eql(u8, default_val, "autoincrement()"))
-                    "0" // Will be set by database
-                else if (field.type == .string)
-                    try std.fmt.allocPrint(self.allocator, "\"{s}\"", .{default_val})
-                else
-                    default_val;
-
-                try self.output.writer(self.allocator).print("            .{s} = {s},\n", .{ field.name, default_expr });
-                if (field.type == .string) self.allocator.free(default_expr);
+                // Handle different default value types - skip autoincrement as it's undefined
+                if (std.mem.eql(u8, default_val, "autoincrement()")) {
+                    try self.output.writer(self.allocator).print("            .{s} = undefined,\n", .{field.name});
+                } else if (std.mem.eql(u8, default_val, "now()")) {
+                    try self.output.writer(self.allocator).print("            .{s} = std.time.timestamp(),\n", .{field.name});
+                } else if (field.type == .string) {
+                    try self.output.writer(self.allocator).print("            .{s} = \"{s}\",\n", .{ field.name, default_val });
+                } else {
+                    try self.output.writer(self.allocator).print("            .{s} = {s},\n", .{ field.name, default_val });
+                }
             } else {
                 try self.output.writer(self.allocator).print("            .{s} = null,\n", .{field.name});
             }
@@ -172,55 +174,66 @@ pub const Generator = struct {
         var output = &self.output;
 
         try output.appendSlice(self.allocator, "\n    /// Convert to SQL values for INSERT/UPDATE\n");
-        try output.appendSlice(self.allocator, "    pub fn toSqlValues(self: *const @This(), allocator: std.mem.Allocator) ![]const u8 {\n");
+        try output.appendSlice(self.allocator, "    pub fn toSqlValues(self: *const @This(), allocator: std.mem.Allocator, columns: []const []const u8) ![]const u8 {\n");
         try output.appendSlice(self.allocator, "        var values: std.ArrayList(u8) = .empty;\n");
         try output.appendSlice(self.allocator, "        var first: bool = true;\n");
+        try output.appendSlice(self.allocator, "\n        // Helper to check if column is in the list\n");
+        try output.appendSlice(self.allocator, "        const hasColumn = struct {\n");
+        try output.appendSlice(self.allocator, "            fn contains(cols: []const []const u8, name: []const u8) bool {\n");
+        try output.appendSlice(self.allocator, "                for (cols) |col| {\n");
+        try output.appendSlice(self.allocator, "                    if (std.mem.eql(u8, col, name)) return true;\n");
+        try output.appendSlice(self.allocator, "                }\n");
+        try output.appendSlice(self.allocator, "                return false;\n");
+        try output.appendSlice(self.allocator, "            }\n");
+        try output.appendSlice(self.allocator, "        }.contains;\n");
 
         for (model.fields.items) |*field| {
-            if (field.isPrimaryKey() and field.getDefaultValue() != null) {
-                // Skip auto-increment primary keys
-                continue;
-            }
-
             // Skip relationship fields in SQL generation
             if (field.type.isRelation()) {
                 continue;
             }
 
+            const column_name = field.getColumnName();
+            try output.writer(self.allocator).print("\n        // Process {s} field\n", .{field.name});
+            try output.writer(self.allocator).print("        if (hasColumn(columns, \"{s}\")) {{\n", .{column_name});
+
             if (!field.optional) {
                 // Non-optional fields
-                try output.appendSlice(self.allocator, "        if (!first) try values.appendSlice(allocator, \", \");\n");
-                try output.appendSlice(self.allocator, "        first = false;\n");
+                try output.appendSlice(self.allocator, "            if (!first) try values.appendSlice(allocator, \", \");\n");
+                try output.appendSlice(self.allocator, "            first = false;\n");
                 switch (field.type) {
-                    .string => try output.writer(self.allocator).print("        try values.writer(allocator).print(\"'{{s}}'\", .{{self.{s}}});\n", .{field.name}),
-                    .int => try output.writer(self.allocator).print("        try values.writer(allocator).print(\"{{d}}\", .{{self.{s}}});\n", .{field.name}),
-                    .boolean => try output.writer(self.allocator).print("        try values.appendSlice(allocator, if (self.{s}) \"true\" else \"false\");\n", .{field.name}),
-                    .datetime => try output.writer(self.allocator).print("        try values.writer(allocator).print(\"to_timestamp({{d}})\", .{{self.{s}}});\n", .{field.name}),
+                    .string => try output.writer(self.allocator).print("            try values.writer(allocator).print(\"'{{s}}'\", .{{self.{s}}});\n", .{field.name}),
+                    .int => try output.writer(self.allocator).print("            try values.writer(allocator).print(\"{{d}}\", .{{self.{s}}});\n", .{field.name}),
+                    .boolean => try output.writer(self.allocator).print("            try values.appendSlice(allocator, if (self.{s}) \"true\" else \"false\");\n", .{field.name}),
+                    .datetime => try output.writer(self.allocator).print("            try values.writer(allocator).print(\"to_timestamp({{d}})\", .{{self.{s}}});\n", .{field.name}),
                     .model_ref, .model_array => {
                         // Relationship fields should be skipped above, but handle gracefully
-                        try output.appendSlice(self.allocator, "        // Relationship field - handled separately\n");
+                        try output.appendSlice(self.allocator, "            // Relationship field - handled separately\n");
                     },
                 }
+                try output.appendSlice(self.allocator, "        }\n");
                 continue;
             }
 
-            try output.appendSlice(self.allocator, "        if (!first) try values.appendSlice(allocator, \", \");\n");
-            try output.appendSlice(self.allocator, "        first = false;\n");
-            try output.writer(self.allocator).print("        if (self.{s}) |val| {{\n", .{field.name});
+            // Optional fields
+            try output.appendSlice(self.allocator, "            if (!first) try values.appendSlice(allocator, \", \");\n");
+            try output.appendSlice(self.allocator, "            first = false;\n");
+            try output.writer(self.allocator).print("            if (self.{s}) |val| {{\n", .{field.name});
 
             switch (field.type) {
-                .string => try output.appendSlice(self.allocator, "            try values.writer(allocator).print(\"'{s}'\", .{val});\n"),
-                .int => try output.appendSlice(self.allocator, "            try values.writer(allocator).print(\"{d}\", .{val});\n"),
-                .boolean => try output.appendSlice(self.allocator, "            try values.appendSlice(allocator, if (val) \"true\" else \"false\");\n"),
-                .datetime => try output.appendSlice(self.allocator, "            try values.writer(allocator).print(\"to_timestamp({d})\", .{val});\n"),
+                .string => try output.appendSlice(self.allocator, "                try values.writer(allocator).print(\"'{s}'\", .{val});\n"),
+                .int => try output.appendSlice(self.allocator, "                try values.writer(allocator).print(\"{d}\", .{val});\n"),
+                .boolean => try output.appendSlice(self.allocator, "                try values.appendSlice(allocator, if (val) \"true\" else \"false\");\n"),
+                .datetime => try output.appendSlice(self.allocator, "                try values.writer(allocator).print(\"to_timestamp({d})\", .{val});\n"),
                 .model_ref, .model_array => {
                     // Relationship fields should be skipped above, but handle gracefully
-                    try output.appendSlice(self.allocator, "            // Relationship field - handled separately\n");
+                    try output.appendSlice(self.allocator, "                // Relationship field - handled separately\n");
                 },
             }
 
-            try output.appendSlice(self.allocator, "        } else {\n");
-            try output.appendSlice(self.allocator, "            try values.appendSlice(allocator, \"NULL\");\n");
+            try output.appendSlice(self.allocator, "            } else {\n");
+            try output.appendSlice(self.allocator, "                try values.appendSlice(allocator, \"NULL\");\n");
+            try output.appendSlice(self.allocator, "            }\n");
             try output.appendSlice(self.allocator, "        }\n");
         }
 
@@ -390,7 +403,7 @@ pub const Generator = struct {
         }
         try output.appendSlice(self.allocator, "};\n");
 
-        try output.appendSlice(self.allocator, "        const values = try data.toSqlValues(self.allocator);\n");
+        try output.appendSlice(self.allocator, "        const values = try data.toSqlValues(self.allocator, &columns);\n");
         try output.appendSlice(self.allocator, "        defer self.allocator.free(values);\n");
 
         try output.appendSlice(self.allocator, "        const key_list = std.mem.join(self.allocator, \", \", &columns) catch \"\";\n");

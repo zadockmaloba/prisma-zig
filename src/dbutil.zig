@@ -31,38 +31,48 @@ pub fn generateMigrationSql(allocator: std.mem.Allocator, schema: *const types.S
             first_field = false;
 
             const column_name = field.getColumnName();
-            const sql_type = field.type.toSqlType();
 
-            try writer.print("    {s} {s}", .{ column_name, sql_type });
-
-            // Add constraints
+            // Handle auto-increment primary keys specially
             if (field.isPrimaryKey()) {
-                try writer.writeAll(" PRIMARY KEY");
                 if (field.getDefaultValue()) |default_val| {
                     if (std.mem.eql(u8, default_val, "autoincrement()")) {
-                        try writer.writeAll(" GENERATED ALWAYS AS IDENTITY");
+                        // Use SERIAL for PostgreSQL auto-increment
+                        try writer.print("    \"{s}\" SERIAL PRIMARY KEY", .{column_name});
+                    } else {
+                        const sql_type = field.type.toSqlType();
+                        try writer.print("    \"{s}\" {s} PRIMARY KEY", .{ column_name, sql_type });
                     }
+                } else {
+                    const sql_type = field.type.toSqlType();
+                    try writer.print("    \"{s}\" {s} PRIMARY KEY", .{ column_name, sql_type });
                 }
-            } else if (!field.optional) {
-                try writer.writeAll(" NOT NULL");
+            } else {
+                const sql_type = field.type.toSqlType();
+                try writer.print("    \"{s}\" {s}", .{ column_name, sql_type });
+                if (!field.optional) {
+                    try writer.writeAll(" NOT NULL");
+                }
             }
 
+            // Add unique constraint for non-primary-key unique fields
             if (field.isUnique() and !field.isPrimaryKey()) {
                 try writer.writeAll(" UNIQUE");
             }
 
-            // Add default values
-            if (field.getDefaultValue()) |default_val| {
-                if (!std.mem.eql(u8, default_val, "autoincrement()")) {
-                    if (std.mem.eql(u8, default_val, "now()")) {
-                        try writer.writeAll(" DEFAULT CURRENT_TIMESTAMP");
-                    } else if (field.type == .string) {
-                        try writer.print(" DEFAULT '{s}'", .{default_val});
-                    } else if (field.type == .boolean) {
-                        const bool_val = if (std.mem.eql(u8, default_val, "true")) "TRUE" else "FALSE";
-                        try writer.print(" DEFAULT {s}", .{bool_val});
-                    } else {
-                        try writer.print(" DEFAULT {s}", .{default_val});
+            // Add default values (skip autoincrement as it's handled above)
+            if (!field.isPrimaryKey()) {
+                if (field.getDefaultValue()) |default_val| {
+                    if (!std.mem.eql(u8, default_val, "autoincrement()")) {
+                        if (std.mem.eql(u8, default_val, "now()")) {
+                            try writer.writeAll(" DEFAULT CURRENT_TIMESTAMP");
+                        } else if (field.type == .string) {
+                            try writer.print(" DEFAULT '{s}'", .{default_val});
+                        } else if (field.type == .boolean) {
+                            const bool_val = if (std.mem.eql(u8, default_val, "true")) "TRUE" else "FALSE";
+                            try writer.print(" DEFAULT {s}", .{bool_val});
+                        } else {
+                            try writer.print(" DEFAULT {s}", .{default_val});
+                        }
                     }
                 }
             }
@@ -124,18 +134,47 @@ pub fn generatePushSql(allocator: std.mem.Allocator, schema: *const types.Schema
             first_field = false;
 
             const column_name = field.getColumnName();
-            const sql_type = field.type.toSqlType();
 
-            try writer.print("    {s} {s}", .{ column_name, sql_type });
-
+            // Handle auto-increment primary keys specially
             if (field.isPrimaryKey()) {
-                try writer.writeAll(" PRIMARY KEY");
-            } else if (!field.optional) {
-                try writer.writeAll(" NOT NULL");
-            }
+                if (field.getDefaultValue()) |default_val| {
+                    if (std.mem.eql(u8, default_val, "autoincrement()")) {
+                        // Use SERIAL for PostgreSQL auto-increment
+                        try writer.print("    \"{s}\" SERIAL PRIMARY KEY", .{column_name});
+                    } else {
+                        const sql_type = field.type.toSqlType();
+                        try writer.print("    \"{s}\" {s} PRIMARY KEY", .{ column_name, sql_type });
+                    }
+                } else {
+                    const sql_type = field.type.toSqlType();
+                    try writer.print("    \"{s}\" {s} PRIMARY KEY", .{ column_name, sql_type });
+                }
+            } else {
+                const sql_type = field.type.toSqlType();
+                try writer.print("    \"{s}\" {s}", .{ column_name, sql_type });
+                if (!field.optional) {
+                    try writer.writeAll(" NOT NULL");
+                }
 
-            if (field.isUnique() and !field.isPrimaryKey()) {
-                try writer.writeAll(" UNIQUE");
+                if (field.isUnique()) {
+                    try writer.writeAll(" UNIQUE");
+                }
+
+                // Add default values for non-primary-key fields
+                if (field.getDefaultValue()) |default_val| {
+                    if (!std.mem.eql(u8, default_val, "autoincrement()")) {
+                        if (std.mem.eql(u8, default_val, "now()")) {
+                            try writer.writeAll(" DEFAULT CURRENT_TIMESTAMP");
+                        } else if (field.type == .string) {
+                            try writer.print(" DEFAULT '{s}'", .{default_val});
+                        } else if (field.type == .boolean) {
+                            const bool_val = if (std.mem.eql(u8, default_val, "true")) "TRUE" else "FALSE";
+                            try writer.print(" DEFAULT {s}", .{bool_val});
+                        } else {
+                            try writer.print(" DEFAULT {s}", .{default_val});
+                        }
+                    }
+                }
             }
         }
 

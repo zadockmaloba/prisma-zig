@@ -18,7 +18,6 @@ pub fn main() !void {
 
     var client = prisma.PrismaClient.init(alloc, &conn);
     _ = client.user.create(.init(
-        1,
         "alice@example.com",
     )) catch |err| {
         std.debug.print("Failed to create user: {}\n", .{err});
@@ -69,28 +68,27 @@ pub fn main() !void {
     // Demo: Create another user for delete test
     std.debug.print("\n=== delete Demo ===\n", .{});
     _ = client.user.create(.init(
-        999,
         "temp@example.com",
     )) catch |err| {
         std.debug.print("Failed to create temp user: {}\n", .{err});
     };
 
     // Verify it exists
-    const temp_user = try client.user.findUnique(.{ .where = .{ .id = .{ .equals = 999 } } });
+    const temp_user = try client.user.findUnique(.{ .where = .{ .id = .{ .equals = 2 } } });
     if (temp_user) |user| {
         std.debug.print("Created temp user: id={}, email={s}\n", .{ user.id, user.email });
     }
 
     // Delete the temp user
-    try client.user.delete(.{ .where = .{ .id = .{ .equals = 999 } } });
-    std.debug.print("Deleted user with id=999\n", .{});
+    try client.user.delete(.{ .where = .{ .id = .{ .equals = 2 } } });
+    std.debug.print("Deleted user with id=2\n", .{});
 
     // Verify it's gone
-    const deleted_user = try client.user.findUnique(.{ .where = .{ .id = .{ .equals = 999 } } });
+    const deleted_user = try client.user.findUnique(.{ .where = .{ .id = .{ .equals = 2 } } });
     if (deleted_user) |user| {
         std.debug.print("User still exists: id={}, email={s}\n", .{ user.id, user.email });
     } else {
-        std.debug.print("Confirmed: User with id=999 has been deleted\n", .{});
+        std.debug.print("Confirmed: User with id=2 has been deleted\n", .{});
     }
 }
 

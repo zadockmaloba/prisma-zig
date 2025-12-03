@@ -11,6 +11,7 @@ pub const ResultSet = psql.ResultSet;
 pub const User = struct {
     /// Database column: id
     /// Primary key
+    /// Default: autoincrement()
     id: i32,
     /// Database column: email
     /// Unique constraint
@@ -25,9 +26,9 @@ pub const User = struct {
     updatedAt: i64,
 
     /// Initialize a new instance
-    pub fn init(id: i32, email: []const u8) User {
+    pub fn init(email: []const u8) User {
         return User{
-            .id = id,
+            .id = undefined,
             .email = email,
             .name = null,
             .createdAt = std.time.timestamp(),
@@ -36,28 +37,58 @@ pub const User = struct {
     }
 
     /// Convert to SQL values for INSERT/UPDATE
-    pub fn toSqlValues(self: *const @This(), allocator: std.mem.Allocator) ![]const u8 {
+    pub fn toSqlValues(self: *const @This(), allocator: std.mem.Allocator, columns: []const []const u8) ![]const u8 {
         var values: std.ArrayList(u8) = .empty;
         var first: bool = true;
-        if (!first) try values.appendSlice(allocator, ", ");
-        first = false;
-        try values.writer(allocator).print("{d}", .{self.id});
-        if (!first) try values.appendSlice(allocator, ", ");
-        first = false;
-        try values.writer(allocator).print("'{s}'", .{self.email});
-        if (!first) try values.appendSlice(allocator, ", ");
-        first = false;
-        if (self.name) |val| {
-            try values.writer(allocator).print("'{s}'", .{val});
-        } else {
-            try values.appendSlice(allocator, "NULL");
+
+        // Helper to check if column is in the list
+        const hasColumn = struct {
+            fn contains(cols: []const []const u8, name: []const u8) bool {
+                for (cols) |col| {
+                    if (std.mem.eql(u8, col, name)) return true;
+                }
+                return false;
+            }
+        }.contains;
+
+        // Process id field
+        if (hasColumn(columns, "id")) {
+            if (!first) try values.appendSlice(allocator, ", ");
+            first = false;
+            try values.writer(allocator).print("{d}", .{self.id});
         }
-        if (!first) try values.appendSlice(allocator, ", ");
-        first = false;
-        try values.writer(allocator).print("to_timestamp({d})", .{self.createdAt});
-        if (!first) try values.appendSlice(allocator, ", ");
-        first = false;
-        try values.writer(allocator).print("to_timestamp({d})", .{self.updatedAt});
+
+        // Process email field
+        if (hasColumn(columns, "email")) {
+            if (!first) try values.appendSlice(allocator, ", ");
+            first = false;
+            try values.writer(allocator).print("'{s}'", .{self.email});
+        }
+
+        // Process name field
+        if (hasColumn(columns, "name")) {
+            if (!first) try values.appendSlice(allocator, ", ");
+            first = false;
+            if (self.name) |val| {
+                try values.writer(allocator).print("'{s}'", .{val});
+            } else {
+                try values.appendSlice(allocator, "NULL");
+            }
+        }
+
+        // Process createdAt field
+        if (hasColumn(columns, "createdAt")) {
+            if (!first) try values.appendSlice(allocator, ", ");
+            first = false;
+            try values.writer(allocator).print("to_timestamp({d})", .{self.createdAt});
+        }
+
+        // Process updatedAt field
+        if (hasColumn(columns, "updatedAt")) {
+            if (!first) try values.appendSlice(allocator, ", ");
+            first = false;
+            try values.writer(allocator).print("to_timestamp({d})", .{self.updatedAt});
+        }
         return values.toOwnedSlice(allocator);
     }
 };
@@ -66,6 +97,7 @@ pub const User = struct {
 pub const Post = struct {
     /// Database column: id
     /// Primary key
+    /// Default: autoincrement()
     id: i32,
     /// Database column: title
     title: []const u8,
@@ -81,9 +113,9 @@ pub const Post = struct {
     createdAt: i64,
 
     /// Initialize a new instance
-    pub fn init(id: i32, title: []const u8, authorId: i32) Post {
+    pub fn init(title: []const u8, authorId: i32) Post {
         return Post{
-            .id = id,
+            .id = undefined,
             .title = title,
             .content = null,
             .published = false,
@@ -93,31 +125,65 @@ pub const Post = struct {
     }
 
     /// Convert to SQL values for INSERT/UPDATE
-    pub fn toSqlValues(self: *const @This(), allocator: std.mem.Allocator) ![]const u8 {
+    pub fn toSqlValues(self: *const @This(), allocator: std.mem.Allocator, columns: []const []const u8) ![]const u8 {
         var values: std.ArrayList(u8) = .empty;
         var first: bool = true;
-        if (!first) try values.appendSlice(allocator, ", ");
-        first = false;
-        try values.writer(allocator).print("{d}", .{self.id});
-        if (!first) try values.appendSlice(allocator, ", ");
-        first = false;
-        try values.writer(allocator).print("'{s}'", .{self.title});
-        if (!first) try values.appendSlice(allocator, ", ");
-        first = false;
-        if (self.content) |val| {
-            try values.writer(allocator).print("'{s}'", .{val});
-        } else {
-            try values.appendSlice(allocator, "NULL");
+
+        // Helper to check if column is in the list
+        const hasColumn = struct {
+            fn contains(cols: []const []const u8, name: []const u8) bool {
+                for (cols) |col| {
+                    if (std.mem.eql(u8, col, name)) return true;
+                }
+                return false;
+            }
+        }.contains;
+
+        // Process id field
+        if (hasColumn(columns, "id")) {
+            if (!first) try values.appendSlice(allocator, ", ");
+            first = false;
+            try values.writer(allocator).print("{d}", .{self.id});
         }
-        if (!first) try values.appendSlice(allocator, ", ");
-        first = false;
-        try values.appendSlice(allocator, if (self.published) "true" else "false");
-        if (!first) try values.appendSlice(allocator, ", ");
-        first = false;
-        try values.writer(allocator).print("{d}", .{self.authorId});
-        if (!first) try values.appendSlice(allocator, ", ");
-        first = false;
-        try values.writer(allocator).print("to_timestamp({d})", .{self.createdAt});
+
+        // Process title field
+        if (hasColumn(columns, "title")) {
+            if (!first) try values.appendSlice(allocator, ", ");
+            first = false;
+            try values.writer(allocator).print("'{s}'", .{self.title});
+        }
+
+        // Process content field
+        if (hasColumn(columns, "content")) {
+            if (!first) try values.appendSlice(allocator, ", ");
+            first = false;
+            if (self.content) |val| {
+                try values.writer(allocator).print("'{s}'", .{val});
+            } else {
+                try values.appendSlice(allocator, "NULL");
+            }
+        }
+
+        // Process published field
+        if (hasColumn(columns, "published")) {
+            if (!first) try values.appendSlice(allocator, ", ");
+            first = false;
+            try values.appendSlice(allocator, if (self.published) "true" else "false");
+        }
+
+        // Process authorId field
+        if (hasColumn(columns, "authorId")) {
+            if (!first) try values.appendSlice(allocator, ", ");
+            first = false;
+            try values.writer(allocator).print("{d}", .{self.authorId});
+        }
+
+        // Process createdAt field
+        if (hasColumn(columns, "createdAt")) {
+            if (!first) try values.appendSlice(allocator, ", ");
+            first = false;
+            try values.writer(allocator).print("to_timestamp({d})", .{self.createdAt});
+        }
         return values.toOwnedSlice(allocator);
     }
 };
@@ -126,6 +192,7 @@ pub const Post = struct {
 pub const Profile = struct {
     /// Database column: id
     /// Primary key
+    /// Default: autoincrement()
     id: i32,
     /// Database column: bio
     bio: ?[]const u8,
@@ -134,31 +201,53 @@ pub const Profile = struct {
     userId: i32,
 
     /// Initialize a new instance
-    pub fn init(id: i32, userId: i32) Profile {
+    pub fn init(userId: i32) Profile {
         return Profile{
-            .id = id,
+            .id = undefined,
             .bio = null,
             .userId = userId,
         };
     }
 
     /// Convert to SQL values for INSERT/UPDATE
-    pub fn toSqlValues(self: *const @This(), allocator: std.mem.Allocator) ![]const u8 {
+    pub fn toSqlValues(self: *const @This(), allocator: std.mem.Allocator, columns: []const []const u8) ![]const u8 {
         var values: std.ArrayList(u8) = .empty;
         var first: bool = true;
-        if (!first) try values.appendSlice(allocator, ", ");
-        first = false;
-        try values.writer(allocator).print("{d}", .{self.id});
-        if (!first) try values.appendSlice(allocator, ", ");
-        first = false;
-        if (self.bio) |val| {
-            try values.writer(allocator).print("'{s}'", .{val});
-        } else {
-            try values.appendSlice(allocator, "NULL");
+
+        // Helper to check if column is in the list
+        const hasColumn = struct {
+            fn contains(cols: []const []const u8, name: []const u8) bool {
+                for (cols) |col| {
+                    if (std.mem.eql(u8, col, name)) return true;
+                }
+                return false;
+            }
+        }.contains;
+
+        // Process id field
+        if (hasColumn(columns, "id")) {
+            if (!first) try values.appendSlice(allocator, ", ");
+            first = false;
+            try values.writer(allocator).print("{d}", .{self.id});
         }
-        if (!first) try values.appendSlice(allocator, ", ");
-        first = false;
-        try values.writer(allocator).print("{d}", .{self.userId});
+
+        // Process bio field
+        if (hasColumn(columns, "bio")) {
+            if (!first) try values.appendSlice(allocator, ", ");
+            first = false;
+            if (self.bio) |val| {
+                try values.writer(allocator).print("'{s}'", .{val});
+            } else {
+                try values.appendSlice(allocator, "NULL");
+            }
+        }
+
+        // Process userId field
+        if (hasColumn(columns, "user_id")) {
+            if (!first) try values.appendSlice(allocator, ", ");
+            first = false;
+            try values.writer(allocator).print("{d}", .{self.userId});
+        }
         return values.toOwnedSlice(allocator);
     }
 };
@@ -243,8 +332,8 @@ pub const UserOperations = struct {
 
     /// Create a new User record
     pub fn create(self: *@This(), data: User) !User {
-        const columns = [_][]const u8{"id", "email", "name", "createdAt", "updatedAt"};
-        const values = try data.toSqlValues(self.allocator);
+        const columns = [_][]const u8{"email", "name", "createdAt", "updatedAt"};
+        const values = try data.toSqlValues(self.allocator, &columns);
         defer self.allocator.free(values);
         const key_list = std.mem.join(self.allocator, ", ", &columns) catch "";
         defer self.allocator.free(key_list);
@@ -608,8 +697,8 @@ pub const PostOperations = struct {
 
     /// Create a new Post record
     pub fn create(self: *@This(), data: Post) !Post {
-        const columns = [_][]const u8{"id", "title", "content", "published", "authorId", "createdAt"};
-        const values = try data.toSqlValues(self.allocator);
+        const columns = [_][]const u8{"title", "content", "published", "authorId", "createdAt"};
+        const values = try data.toSqlValues(self.allocator, &columns);
         defer self.allocator.free(values);
         const key_list = std.mem.join(self.allocator, ", ", &columns) catch "";
         defer self.allocator.free(key_list);
@@ -1008,8 +1097,8 @@ pub const ProfileOperations = struct {
 
     /// Create a new Profile record
     pub fn create(self: *@This(), data: Profile) !Profile {
-        const columns = [_][]const u8{"id", "bio", "user_id"};
-        const values = try data.toSqlValues(self.allocator);
+        const columns = [_][]const u8{"bio", "user_id"};
+        const values = try data.toSqlValues(self.allocator, &columns);
         defer self.allocator.free(values);
         const key_list = std.mem.join(self.allocator, ", ", &columns) catch "";
         defer self.allocator.free(key_list);
