@@ -16,6 +16,7 @@ pub fn generateMigrationSql(allocator: std.mem.Allocator, schema: *const types.S
         const table_name = try model.getTableName(allocator);
         defer if (table_name.heap_allocated) allocator.free(table_name.value);
 
+        try writer.print("-- DropTable if exists\nDROP TABLE IF EXISTS \"{s}\" CASCADE;\n\n", .{table_name.value});
         try writer.print("-- CreateTable\nCREATE TABLE \"{s}\" (\n", .{table_name.value});
 
         var first_field = true;
@@ -37,18 +38,18 @@ pub fn generateMigrationSql(allocator: std.mem.Allocator, schema: *const types.S
                 if (field.getDefaultValue()) |default_val| {
                     if (std.mem.eql(u8, default_val, "autoincrement()")) {
                         // Use SERIAL for PostgreSQL auto-increment
-                        try writer.print("    \"{s}\" SERIAL PRIMARY KEY", .{column_name});
+                        try writer.print("    {s} SERIAL PRIMARY KEY", .{column_name});
                     } else {
                         const sql_type = field.type.toSqlType();
-                        try writer.print("    \"{s}\" {s} PRIMARY KEY", .{ column_name, sql_type });
+                        try writer.print("    {s} {s} PRIMARY KEY", .{ column_name, sql_type });
                     }
                 } else {
                     const sql_type = field.type.toSqlType();
-                    try writer.print("    \"{s}\" {s} PRIMARY KEY", .{ column_name, sql_type });
+                    try writer.print("    {s} {s} PRIMARY KEY", .{ column_name, sql_type });
                 }
             } else {
                 const sql_type = field.type.toSqlType();
-                try writer.print("    \"{s}\" {s}", .{ column_name, sql_type });
+                try writer.print("    {s} {s}", .{ column_name, sql_type });
                 if (!field.optional) {
                     try writer.writeAll(" NOT NULL");
                 }
@@ -89,7 +90,7 @@ pub fn generateMigrationSql(allocator: std.mem.Allocator, schema: *const types.S
         for (model.fields.items) |*field| {
             if (field.isUnique() and !field.isPrimaryKey()) {
                 const column_name = field.getColumnName();
-                try writer.print("-- CreateIndex\nCREATE UNIQUE INDEX \"{s}_{s}_key\" ON \"{s}\"(\"{s}\");\n\n", .{ table_name.value, column_name, table_name.value, column_name });
+                try writer.print("-- CreateIndex\nCREATE UNIQUE INDEX \"{s}_{s}_key\" ON \"{s}\"({s});\n\n", .{ table_name.value, column_name, table_name.value, column_name });
             }
         }
     }
@@ -115,12 +116,22 @@ pub fn generatePushSql(allocator: std.mem.Allocator, schema: *const types.Schema
     // 3. Handle index creation/deletion
     // 4. Handle foreign key constraints
 
-    // For now, generate basic CREATE TABLE statements
+    // Drop and recreate tables to handle schema changes
     for (schema.models.items) |*model| {
         const table_name = try model.getTableName(allocator);
         defer if (table_name.heap_allocated) allocator.free(table_name.value);
 
-        try writer.print("CREATE TABLE IF NOT EXISTS \"{s}\" (\n", .{table_name.value});
+        try writer.print("DROP TABLE IF EXISTS \"{s}\" CASCADE;\n", .{table_name.value});
+    }
+
+    try writer.writeAll("\n");
+
+    // Now create all tables
+    for (schema.models.items) |*model| {
+        const table_name = try model.getTableName(allocator);
+        defer if (table_name.heap_allocated) allocator.free(table_name.value);
+
+        try writer.print("CREATE TABLE \"{s}\" (\n", .{table_name.value});
 
         var first_field = true;
         for (model.fields.items) |*field| {
@@ -140,18 +151,18 @@ pub fn generatePushSql(allocator: std.mem.Allocator, schema: *const types.Schema
                 if (field.getDefaultValue()) |default_val| {
                     if (std.mem.eql(u8, default_val, "autoincrement()")) {
                         // Use SERIAL for PostgreSQL auto-increment
-                        try writer.print("    \"{s}\" SERIAL PRIMARY KEY", .{column_name});
+                        try writer.print("    {s} SERIAL PRIMARY KEY", .{column_name});
                     } else {
                         const sql_type = field.type.toSqlType();
-                        try writer.print("    \"{s}\" {s} PRIMARY KEY", .{ column_name, sql_type });
+                        try writer.print("    {s} {s} PRIMARY KEY", .{ column_name, sql_type });
                     }
                 } else {
                     const sql_type = field.type.toSqlType();
-                    try writer.print("    \"{s}\" {s} PRIMARY KEY", .{ column_name, sql_type });
+                    try writer.print("    {s} {s} PRIMARY KEY", .{ column_name, sql_type });
                 }
             } else {
                 const sql_type = field.type.toSqlType();
-                try writer.print("    \"{s}\" {s}", .{ column_name, sql_type });
+                try writer.print("    {s} {s}", .{ column_name, sql_type });
                 if (!field.optional) {
                     try writer.writeAll(" NOT NULL");
                 }
