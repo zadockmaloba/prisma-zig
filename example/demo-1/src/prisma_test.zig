@@ -281,10 +281,90 @@ pub const UserOperations = struct {
 
     /// Find a unique User record
     pub fn findUnique(self: *@This(), options: struct { where: UserWhere }) !?User {
-        // TODO: Implement findUnique logic
-        _ = options;
-        _ = self;
-        return null; // Placeholder
+        var query_builder = QueryBuilder.init(self.allocator);
+        defer query_builder.deinit();
+        _ = try query_builder.sql("SELECT * FROM \"user\" WHERE ");
+        var first_condition = true;
+
+        // Build WHERE clause for unique fields
+        if (options.where.id) |filter| {
+            if (filter.equals) |value| {
+                if (!first_condition) {
+                    _ = try query_builder.sql(" AND ");
+                }
+                first_condition = false;
+                const val_str = try std.fmt.allocPrint(self.allocator, "{d}", .{value});
+                defer self.allocator.free(val_str);
+                _ = try query_builder.sql("\"id\" = ");
+                _ = try query_builder.sql(val_str);
+            }
+        }
+        if (options.where.email) |filter| {
+            if (filter.equals) |value| {
+                if (!first_condition) {
+                    _ = try query_builder.sql(" AND ");
+                }
+                first_condition = false;
+                _ = try query_builder.sql("\"email\" = '");
+                _ = try query_builder.sql(value);
+                _ = try query_builder.sql("'");
+            }
+        }
+        if (options.where.name) |filter| {
+            if (filter.equals) |value| {
+                if (!first_condition) {
+                    _ = try query_builder.sql(" AND ");
+                }
+                first_condition = false;
+                _ = try query_builder.sql("\"name\" = '");
+                _ = try query_builder.sql(value);
+                _ = try query_builder.sql("'");
+            }
+        }
+        if (options.where.createdAt) |filter| {
+            if (filter.equals) |value| {
+                if (!first_condition) {
+                    _ = try query_builder.sql(" AND ");
+                }
+                first_condition = false;
+                const val_str = try std.fmt.allocPrint(self.allocator, "to_timestamp({d})", .{value});
+                defer self.allocator.free(val_str);
+                _ = try query_builder.sql("\"createdAt\" = ");
+                _ = try query_builder.sql(val_str);
+            }
+        }
+        if (options.where.updatedAt) |filter| {
+            if (filter.equals) |value| {
+                if (!first_condition) {
+                    _ = try query_builder.sql(" AND ");
+                }
+                first_condition = false;
+                const val_str = try std.fmt.allocPrint(self.allocator, "to_timestamp({d})", .{value});
+                defer self.allocator.free(val_str);
+                _ = try query_builder.sql("\"updatedAt\" = ");
+                _ = try query_builder.sql(val_str);
+            }
+        }
+
+        _ = try query_builder.sql(" LIMIT 1");
+        const query = query_builder.build();
+        var result = try self.connection.execSafe(query);
+        
+        if (result.rowCount() == 0) {
+            return null;
+        }
+
+        if (result.next()) |row| {
+            var record: User = undefined;
+            record.id = try row.get("id", i32);
+            record.email = try row.get("email", []const u8);
+            record.name = try row.getOpt("name", []const u8);
+            record.createdAt = try dt.unixTimeFromISO8601( try row.get("createdAt", []const u8) );
+            record.updatedAt = try dt.unixTimeFromISO8601( try row.get("updatedAt", []const u8) );
+            return record;
+        }
+
+        return null;
     }
 
     /// Update a User record
@@ -373,10 +453,101 @@ pub const PostOperations = struct {
 
     /// Find a unique Post record
     pub fn findUnique(self: *@This(), options: struct { where: PostWhere }) !?Post {
-        // TODO: Implement findUnique logic
-        _ = options;
-        _ = self;
-        return null; // Placeholder
+        var query_builder = QueryBuilder.init(self.allocator);
+        defer query_builder.deinit();
+        _ = try query_builder.sql("SELECT * FROM \"posts\" WHERE ");
+        var first_condition = true;
+
+        // Build WHERE clause for unique fields
+        if (options.where.id) |filter| {
+            if (filter.equals) |value| {
+                if (!first_condition) {
+                    _ = try query_builder.sql(" AND ");
+                }
+                first_condition = false;
+                const val_str = try std.fmt.allocPrint(self.allocator, "{d}", .{value});
+                defer self.allocator.free(val_str);
+                _ = try query_builder.sql("\"id\" = ");
+                _ = try query_builder.sql(val_str);
+            }
+        }
+        if (options.where.title) |filter| {
+            if (filter.equals) |value| {
+                if (!first_condition) {
+                    _ = try query_builder.sql(" AND ");
+                }
+                first_condition = false;
+                _ = try query_builder.sql("\"title\" = '");
+                _ = try query_builder.sql(value);
+                _ = try query_builder.sql("'");
+            }
+        }
+        if (options.where.content) |filter| {
+            if (filter.equals) |value| {
+                if (!first_condition) {
+                    _ = try query_builder.sql(" AND ");
+                }
+                first_condition = false;
+                _ = try query_builder.sql("\"content\" = '");
+                _ = try query_builder.sql(value);
+                _ = try query_builder.sql("'");
+            }
+        }
+        if (options.where.published) |filter| {
+            if (filter.equals) |value| {
+                if (!first_condition) {
+                    _ = try query_builder.sql(" AND ");
+                }
+                first_condition = false;
+                _ = try query_builder.sql("\"published\" = ");
+                _ = try query_builder.sql(if (value) "true" else "false");
+            }
+        }
+        if (options.where.authorId) |filter| {
+            if (filter.equals) |value| {
+                if (!first_condition) {
+                    _ = try query_builder.sql(" AND ");
+                }
+                first_condition = false;
+                const val_str = try std.fmt.allocPrint(self.allocator, "{d}", .{value});
+                defer self.allocator.free(val_str);
+                _ = try query_builder.sql("\"authorId\" = ");
+                _ = try query_builder.sql(val_str);
+            }
+        }
+        if (options.where.createdAt) |filter| {
+            if (filter.equals) |value| {
+                if (!first_condition) {
+                    _ = try query_builder.sql(" AND ");
+                }
+                first_condition = false;
+                const val_str = try std.fmt.allocPrint(self.allocator, "to_timestamp({d})", .{value});
+                defer self.allocator.free(val_str);
+                _ = try query_builder.sql("\"createdAt\" = ");
+                _ = try query_builder.sql(val_str);
+            }
+        }
+
+        _ = try query_builder.sql(" LIMIT 1");
+        const query = query_builder.build();
+        var result = try self.connection.execSafe(query);
+        
+        if (result.rowCount() == 0) {
+            return null;
+        }
+
+        if (result.next()) |row| {
+            var record: Post = undefined;
+            record.id = try row.get("id", i32);
+            record.title = try row.get("title", []const u8);
+            record.content = try row.getOpt("content", []const u8);
+            record.published = try row.get("published", bool);
+            record.authorId = try row.get("authorId", i32);
+            record.createdAt = try dt.unixTimeFromISO8601( try row.get("createdAt", []const u8) );
+            return record;
+        }
+
+        return null;
     }
 
     /// Update a Post record
@@ -459,10 +630,65 @@ pub const ProfileOperations = struct {
 
     /// Find a unique Profile record
     pub fn findUnique(self: *@This(), options: struct { where: ProfileWhere }) !?Profile {
-        // TODO: Implement findUnique logic
-        _ = options;
-        _ = self;
-        return null; // Placeholder
+        var query_builder = QueryBuilder.init(self.allocator);
+        defer query_builder.deinit();
+        _ = try query_builder.sql("SELECT * FROM \"profile\" WHERE ");
+        var first_condition = true;
+
+        // Build WHERE clause for unique fields
+        if (options.where.id) |filter| {
+            if (filter.equals) |value| {
+                if (!first_condition) {
+                    _ = try query_builder.sql(" AND ");
+                }
+                first_condition = false;
+                const val_str = try std.fmt.allocPrint(self.allocator, "{d}", .{value});
+                defer self.allocator.free(val_str);
+                _ = try query_builder.sql("\"id\" = ");
+                _ = try query_builder.sql(val_str);
+            }
+        }
+        if (options.where.bio) |filter| {
+            if (filter.equals) |value| {
+                if (!first_condition) {
+                    _ = try query_builder.sql(" AND ");
+                }
+                first_condition = false;
+                _ = try query_builder.sql("\"bio\" = '");
+                _ = try query_builder.sql(value);
+                _ = try query_builder.sql("'");
+            }
+        }
+        if (options.where.userId) |filter| {
+            if (filter.equals) |value| {
+                if (!first_condition) {
+                    _ = try query_builder.sql(" AND ");
+                }
+                first_condition = false;
+                const val_str = try std.fmt.allocPrint(self.allocator, "{d}", .{value});
+                defer self.allocator.free(val_str);
+                _ = try query_builder.sql("\"user_id\" = ");
+                _ = try query_builder.sql(val_str);
+            }
+        }
+
+        _ = try query_builder.sql(" LIMIT 1");
+        const query = query_builder.build();
+        var result = try self.connection.execSafe(query);
+        
+        if (result.rowCount() == 0) {
+            return null;
+        }
+
+        if (result.next()) |row| {
+            var record: Profile = undefined;
+            record.id = try row.get("id", i32);
+            record.bio = try row.getOpt("bio", []const u8);
+            record.userId = try row.get("user_id", i32);
+            return record;
+        }
+
+        return null;
     }
 
     /// Update a Profile record

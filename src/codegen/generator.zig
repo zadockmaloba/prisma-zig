@@ -478,14 +478,126 @@ pub const Generator = struct {
     /// Generate FIND_UNIQUE operation
     fn generateFindUniqueOperation(self: *Generator, model: *const PrismaModel) CodeGenError!void {
         var output = &self.output;
+        const table_name = try model.getTableName(self.allocator);
+        defer if (table_name.heap_allocated) self.allocator.free(table_name.value);
 
         try output.writer(self.allocator).print("    /// Find a unique {s} record\n", .{model.name});
         try output.writer(self.allocator).print("    pub fn findUnique(self: *@This(), options: struct {{ where: {s}Where }}) !?{s} {{\n", .{ model.name, model.name });
 
-        try output.appendSlice(self.allocator, "        // TODO: Implement findUnique logic\n");
-        try output.appendSlice(self.allocator, "        _ = options;\n");
-        try output.appendSlice(self.allocator, "        _ = self;\n");
-        try output.appendSlice(self.allocator, "        return null; // Placeholder\n");
+        try output.appendSlice(self.allocator, "        var query_builder = QueryBuilder.init(self.allocator);\n");
+        try output.appendSlice(self.allocator, "        defer query_builder.deinit();\n");
+        try output.writer(self.allocator).print("        _ = try query_builder.sql(\"SELECT * FROM \\\"{s}\\\" WHERE \");\n", .{table_name.value});
+
+        try output.appendSlice(self.allocator, "        var first_condition = true;\n\n");
+
+        // Build WHERE conditions for unique fields
+        try output.appendSlice(self.allocator, "        // Build WHERE clause for unique fields\n");
+        for (model.fields.items) |*field| {
+            if (field.type.isRelation()) continue;
+
+            const filter_type = switch (field.type) {
+                .string => "StringFilter",
+                .int => "IntFilter",
+                .boolean => "BooleanFilter",
+                .datetime => "DateTimeFilter",
+                else => continue,
+            };
+            _ = filter_type;
+
+            const column_name = field.getColumnName();
+
+            try output.writer(self.allocator).print("        if (options.where.{s}) |filter| {{\n", .{field.name});
+            try output.appendSlice(self.allocator, "            if (filter.equals) |value| {\n");
+            try output.appendSlice(self.allocator, "                if (!first_condition) {\n");
+            try output.appendSlice(self.allocator, "                    _ = try query_builder.sql(\" AND \");\n");
+            try output.appendSlice(self.allocator, "                }\n");
+            try output.appendSlice(self.allocator, "                first_condition = false;\n");
+
+            switch (field.type) {
+                .string => {
+                    try output.writer(self.allocator).print("                _ = try query_builder.sql(\"\\\"{s}\\\" = '\");\n", .{column_name});
+                    try output.appendSlice(self.allocator, "                _ = try query_builder.sql(value);\n");
+                    try output.appendSlice(self.allocator, "                _ = try query_builder.sql(\"'\");\n");
+                },
+                .int => {
+                    try output.writer(self.allocator).print("                const val_str = try std.fmt.allocPrint(self.allocator, \"{{d}}\", .{{value}});\n", .{});
+                    try output.appendSlice(self.allocator, "                defer self.allocator.free(val_str);\n");
+                    try output.writer(self.allocator).print("                _ = try query_builder.sql(\"\\\"{s}\\\" = \");\n", .{column_name});
+                    try output.appendSlice(self.allocator, "                _ = try query_builder.sql(val_str);\n");
+                },
+                .boolean => {
+                    try output.writer(self.allocator).print("                _ = try query_builder.sql(\"\\\"{s}\\\" = \");\n", .{column_name});
+                    try output.appendSlice(self.allocator, "                _ = try query_builder.sql(if (value) \"true\" else \"false\");\n");
+                },
+                .datetime => {
+                    try output.writer(self.allocator).print("                const val_str = try std.fmt.allocPrint(self.allocator, \"to_timestamp({{d}})\", .{{value}});\n", .{});
+                    try output.appendSlice(self.allocator, "                defer self.allocator.free(val_str);\n");
+                    try output.writer(self.allocator).print("                _ = try query_builder.sql(\"\\\"{s}\\\" = \");\n", .{column_name});
+                    try output.appendSlice(self.allocator, "                _ = try query_builder.sql(val_str);\n");
+                },
+                else => {},
+            }
+
+            try output.appendSlice(self.allocator, "            }\n");
+            //try output.writer(self.allocator).print("            _ = filter; // Silence unused variable warning for other {s} fields\n", .{filter_type});
+            try output.appendSlice(self.allocator, "        }\n");
+        }
+
+        try output.appendSlice(self.allocator, "\n        _ = try query_builder.sql(\" LIMIT 1\");\n");
+        try output.appendSlice(self.allocator, "        const query = query_builder.build();\n");
+        try output.appendSlice(self.allocator, "        var result = try self.connection.execSafe(query);\n");
+        try output.appendSlice(self.allocator, "        \n");
+        try output.appendSlice(self.allocator, "        if (result.rowCount() == 0) {\n");
+        try output.appendSlice(self.allocator, "            return null;\n");
+        try output.appendSlice(self.allocator, "        }\n\n");
+
+        try output.appendSlice(self.allocator, "        if (result.next()) |row| {\n");
+        try output.writer(self.allocator).print("            var record: {s} = undefined;\n", .{model.name});
+
+        // Generate field parsing for each field (same as findMany)
+        for (model.fields.items) |*field| {
+            if (field.type.isRelation()) continue;
+
+            const column_name = field.getColumnName();
+
+            if (field.optional) {
+                switch (field.type) {
+                    .string => {
+                        try output.writer(self.allocator).print("            record.{s} = try row.getOpt(\"{s}\", []const u8);\n", .{ field.name, column_name });
+                    },
+                    .int => {
+                        try output.writer(self.allocator).print("            record.{s} = try row.getOpt(\"{s}\", i32);\n", .{ field.name, column_name });
+                    },
+                    .boolean => {
+                        try output.writer(self.allocator).print("            record.{s} = try row.getOpt(\"{s}\", bool);\n", .{ field.name, column_name });
+                    },
+                    .datetime => {
+                        try output.writer(self.allocator).print("            record.{s} = try dt.unixTimeFromISO8601( try row.getOpt(\"{s}\", []const u8) );\n", .{ field.name, column_name });
+                    },
+                    else => {},
+                }
+            } else {
+                switch (field.type) {
+                    .string => {
+                        try output.writer(self.allocator).print("            record.{s} = try row.get(\"{s}\", []const u8);\n", .{ field.name, column_name });
+                    },
+                    .int => {
+                        try output.writer(self.allocator).print("            record.{s} = try row.get(\"{s}\", i32);\n", .{ field.name, column_name });
+                    },
+                    .boolean => {
+                        try output.writer(self.allocator).print("            record.{s} = try row.get(\"{s}\", bool);\n", .{ field.name, column_name });
+                    },
+                    .datetime => {
+                        try output.writer(self.allocator).print("            record.{s} = try dt.unixTimeFromISO8601( try row.get(\"{s}\", []const u8) );\n", .{ field.name, column_name });
+                    },
+                    else => {},
+                }
+            }
+        }
+
+        try output.appendSlice(self.allocator, "            return record;\n");
+        try output.appendSlice(self.allocator, "        }\n\n");
+        try output.appendSlice(self.allocator, "        return null;\n");
         try output.appendSlice(self.allocator, "    }\n\n");
     }
 
