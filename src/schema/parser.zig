@@ -557,15 +557,49 @@ pub const Parser = struct {
 
             const key_token = try self.consume(.identifier, "Expected configuration key");
             _ = try self.consume(.equals, "Expected '='");
-            const value_token = try self.consume(.string_literal, "Expected configuration value");
 
             const key = key_token.lexeme;
-            const value = value_token.lexeme[1 .. value_token.lexeme.len - 1]; // Remove quotes
+            var value: []const u8 = "";
+            var is_heap_allocated = false;
+
+            // Check if value is a function call like env("DATABASE_URL")
+            if (self.current_token.type == .identifier) {
+                const func_name = self.current_token.lexeme;
+                if (std.mem.eql(u8, func_name, "env")) {
+                    self.advance(); // consume 'env'
+                    _ = try self.consume(.left_paren, "Expected '(' after env");
+                    const env_var_token = try self.consume(.string_literal, "Expected environment variable name");
+                    _ = try self.consume(.right_paren, "Expected ')' after env variable");
+
+                    // Remove quotes from env var name
+                    const env_var_name = env_var_token.lexeme[1 .. env_var_token.lexeme.len - 1];
+
+                    // Try to get the environment variable value
+                    if (std.process.getEnvVarOwned(self.allocator, env_var_name)) |env_value| {
+                        value = env_value;
+                        is_heap_allocated = true;
+                    } else |_| {
+                        // If env var not found, try to read from .env file or use placeholder
+                        value = try self.readFromEnvFile(env_var_name);
+                        is_heap_allocated = true;
+                    }
+                } else {
+                    return ParseError.InvalidSyntax;
+                }
+            } else if (self.current_token.type == .string_literal) {
+                const value_token = self.current_token;
+                self.advance();
+                value = value_token.lexeme[1 .. value_token.lexeme.len - 1]; // Remove quotes
+            } else {
+                return ParseError.InvalidSyntax;
+            }
 
             if (std.mem.eql(u8, key, "provider")) {
                 config.provider = value;
+                config.provider_heap_allocated = is_heap_allocated;
             } else if (std.mem.eql(u8, key, "url")) {
                 config.url = value;
+                config.url_heap_allocated = is_heap_allocated;
             }
 
             // Skip to next line
@@ -575,6 +609,41 @@ pub const Parser = struct {
         }
 
         return config;
+    }
+
+    fn readFromEnvFile(self: *Parser, env_var_name: []const u8) ![]const u8 {
+        // Try to read .env file
+        const env_content = std.fs.cwd().readFileAlloc(self.allocator, ".env", 1024 * 16) catch {
+            // If .env doesn't exist, return a placeholder
+            std.log.warn("Environment variable '{s}' not found and .env file not available", .{env_var_name});
+            return try std.fmt.allocPrint(self.allocator, "env({s})", .{env_var_name});
+        };
+        defer self.allocator.free(env_content);
+
+        // Parse .env file for the variable
+        var lines = std.mem.splitSequence(u8, env_content, "\n");
+        while (lines.next()) |line| {
+            const trimmed = std.mem.trim(u8, line, " \t\r\n");
+
+            // Skip comments and empty lines
+            if (trimmed.len == 0 or std.mem.startsWith(u8, trimmed, "#")) {
+                continue;
+            }
+
+            // Check if this line defines our variable
+            const search_key = try std.fmt.allocPrint(self.allocator, "{s}=", .{env_var_name});
+            defer self.allocator.free(search_key);
+
+            if (std.mem.startsWith(u8, trimmed, search_key)) {
+                const value_part = trimmed[search_key.len..];
+                const value = std.mem.trim(u8, value_part, "\"'"); // Remove quotes if present
+                return try self.allocator.dupe(u8, value);
+            }
+        }
+
+        // Variable not found in .env file
+        std.log.warn("Environment variable '{s}' not found in .env file", .{env_var_name});
+        return try std.fmt.allocPrint(self.allocator, "env({s})", .{env_var_name});
     }
 };
 

@@ -325,7 +325,7 @@ pub const PrismaModel = struct {
         for (self.name, 0..) |c, i| {
             lowercase[i] = std.ascii.toLower(c);
         }
-        return .{ .value =  lowercase, .heap_allocated = true, .allocator = allocator };
+        return .{ .value = lowercase, .heap_allocated = true, .allocator = allocator };
     }
 
     /// Find a field by name
@@ -436,6 +436,8 @@ pub const DatasourceConfig = struct {
     provider: []const u8,
     url: []const u8,
     allocator: std.mem.Allocator,
+    provider_heap_allocated: bool = false,
+    url_heap_allocated: bool = false,
 
     pub fn init(allocator: std.mem.Allocator, provider: []const u8, url: []const u8) !DatasourceConfig {
         return .{
@@ -446,9 +448,12 @@ pub const DatasourceConfig = struct {
     }
 
     pub fn deinit(self: *DatasourceConfig) void {
-        _ = self;
-        //self.allocator.free(self.provider);
-        //self.allocator.free(self.url);
+        if (self.provider_heap_allocated) {
+            self.allocator.free(self.provider);
+        }
+        if (self.url_heap_allocated) {
+            self.allocator.free(self.url);
+        }
     }
 };
 
