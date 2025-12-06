@@ -108,6 +108,7 @@ pub const FieldAttribute = union(enum) {
     default: String,
     map: String, // @map("column_name")
     relation: RelationAttribute, // @relation(fields: [authorId], references: [id])
+    db_type: String, // @db.Uuid, @db.VarChar(255), @db.Timestamptz(6), etc.
 
     pub fn initDefault(allocator: std.mem.Allocator, val: String) !FieldAttribute {
         _ = allocator;
@@ -130,6 +131,13 @@ pub const FieldAttribute = union(enum) {
         };
     }
 
+    pub fn initDbType(allocator: std.mem.Allocator, db_type: String) !FieldAttribute {
+        _ = allocator;
+        return .{
+            .db_type = db_type,
+        };
+    }
+
     pub fn deinit(self: FieldAttribute, allocator: std.mem.Allocator) void {
         _ = allocator;
         switch (self) {
@@ -138,6 +146,9 @@ pub const FieldAttribute = union(enum) {
             },
             .default => {
                 if (self.default.heap_allocated) self.default.allocator.?.free(self.default.value);
+            },
+            .db_type => {
+                if (self.db_type.heap_allocated) self.db_type.allocator.?.free(self.db_type.value);
             },
             .relation => |rel| {
                 // Free relation fields if they were allocated
@@ -280,6 +291,51 @@ pub const Field = struct {
             return rel_attr.relation;
         }
         return null;
+    }
+
+    /// Get the database-specific type if present (e.g., "Uuid", "VarChar(255)", "Timestamptz(6)")
+    pub fn getDbType(self: *const Field) ?[]const u8 {
+        if (self.getAttribute(.db_type)) |db_attr| {
+            return db_attr.db_type.value;
+        }
+        return null;
+    }
+
+    /// Get SQL type considering both the field type and database-specific attributes
+    pub fn getSqlType(self: *const Field, db_provider: []const u8) []const u8 {
+        // Check for database-specific type hints
+        if (self.getDbType()) |db_type| {
+            // For PostgreSQL, use native types
+            if (std.mem.eql(u8, db_provider, "postgresql")) {
+                // Handle UUID type
+                if (std.mem.eql(u8, db_type, "Uuid")) return "UUID";
+
+                // Handle VARCHAR with size parameter
+                if (std.mem.startsWith(u8, db_type, "VarChar")) {
+                    // Extract size if present: VarChar(255) -> VARCHAR(255)
+                    if (std.mem.indexOf(u8, db_type, "(")) |_| {
+                        return db_type; // Return full "VarChar(255)" - will be uppercased in SQL
+                    }
+                    return "VARCHAR";
+                }
+
+                // Handle TIMESTAMPTZ with precision
+                if (std.mem.startsWith(u8, db_type, "Timestamptz")) {
+                    if (std.mem.indexOf(u8, db_type, "(")) |_| {
+                        return db_type; // Return full "Timestamptz(6)"
+                    }
+                    return "TIMESTAMPTZ";
+                }
+
+                // Handle other common PostgreSQL types
+                if (std.mem.eql(u8, db_type, "Text")) return "TEXT";
+                if (std.mem.eql(u8, db_type, "Serial")) return "SERIAL";
+                if (std.mem.eql(u8, db_type, "BigSerial")) return "BIGSERIAL";
+            }
+        }
+
+        // Fall back to standard SQL types based on Prisma type
+        return self.type.toSqlType();
     }
 };
 

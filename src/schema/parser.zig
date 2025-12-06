@@ -413,25 +413,49 @@ pub const Parser = struct {
         const attr_name_token = try self.consume(.identifier, "Expected attribute name");
         const attr_name = attr_name_token.lexeme;
 
-        // Handle @db.* attributes (skip them for now as they're database-specific)
+        // Handle @db.* attributes (store them as db_type)
         if (std.mem.eql(u8, attr_name, "db")) {
             if (self.match(.dot)) {
-                _ = try self.consume(.identifier, "Expected db attribute name");
-                // Skip parameters if present
+                const db_type_token = try self.consume(.identifier, "Expected db attribute name");
+                const db_type_str = db_type_token.lexeme;
+
+                // Check for parameters like VarChar(255) or Timestamptz(6)
                 if (self.match(.left_paren)) {
+                    var type_with_params: std.ArrayList(u8) = .empty;
+                    defer type_with_params.deinit(self.allocator);
+
+                    try type_with_params.appendSlice(self.allocator, db_type_str);
+                    try type_with_params.append(self.allocator, '(');
+
+                    // Collect everything inside parentheses
                     var paren_depth: i32 = 1;
                     while (!self.isAtEnd() and paren_depth > 0) {
                         const token = self.current_token;
-                        self.advance();
                         if (token.type == .left_paren) {
                             paren_depth += 1;
+                            try type_with_params.append(self.allocator, '(');
                         } else if (token.type == .right_paren) {
                             paren_depth -= 1;
+                            if (paren_depth > 0) {
+                                try type_with_params.append(self.allocator, ')');
+                            }
+                        } else if (token.type == .number_literal) {
+                            try type_with_params.appendSlice(self.allocator, token.lexeme);
+                        } else if (token.type == .comma) {
+                            try type_with_params.append(self.allocator, ',');
                         }
+                        self.advance();
                     }
+
+                    try type_with_params.append(self.allocator, ')');
+
+                    const full_type = try self.allocator.dupe(u8, type_with_params.items);
+                    return FieldAttribute.initDbType(self.allocator, .{ .value = full_type, .heap_allocated = true, .allocator = self.allocator });
+                } else {
+                    // No parameters, just the type name
+                    return FieldAttribute.initDbType(self.allocator, .{ .value = db_type_str });
                 }
             }
-            // Return a placeholder - these are database-specific hints
             return error.SkipAttribute;
         }
 

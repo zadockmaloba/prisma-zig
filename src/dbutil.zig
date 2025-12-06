@@ -16,6 +16,8 @@ pub fn generateMigrationSql(allocator: std.mem.Allocator, schema: *const types.S
         const table_name = try model.getTableName(allocator);
         defer if (table_name.heap_allocated) allocator.free(table_name.value);
 
+        const db_provider = if (schema.datasource) |ds| ds.provider else "postgresql";
+
         try writer.print("-- DropTable if exists\nDROP TABLE IF EXISTS \"{s}\" CASCADE;\n\n", .{table_name.value});
         try writer.print("-- CreateTable\nCREATE TABLE \"{s}\" (\n", .{table_name.value});
 
@@ -38,18 +40,57 @@ pub fn generateMigrationSql(allocator: std.mem.Allocator, schema: *const types.S
                 if (field.getDefaultValue()) |default_val| {
                     if (std.mem.eql(u8, default_val, "autoincrement()")) {
                         // Use SERIAL for PostgreSQL auto-increment
-                        try writer.print("    {s} SERIAL PRIMARY KEY", .{column_name});
+                        try writer.print("    \"{s}\" SERIAL PRIMARY KEY", .{column_name});
                     } else {
-                        const sql_type = field.type.toSqlType();
-                        try writer.print("    {s} {s} PRIMARY KEY", .{ column_name, sql_type });
+                        var sql_type_buf: [64]u8 = undefined;
+                        const sql_type_raw = field.getSqlType(db_provider);
+                        const sql_type = blk: {
+                            if (std.mem.indexOf(u8, sql_type_raw, "(")) |_| {
+                                var i: usize = 0;
+                                for (sql_type_raw) |c| {
+                                    sql_type_buf[i] = std.ascii.toUpper(c);
+                                    i += 1;
+                                    if (i >= sql_type_buf.len) break;
+                                }
+                                break :blk sql_type_buf[0..sql_type_raw.len];
+                            }
+                            break :blk sql_type_raw;
+                        };
+                        try writer.print("    \"{s}\" {s} PRIMARY KEY", .{ column_name, sql_type });
                     }
                 } else {
-                    const sql_type = field.type.toSqlType();
-                    try writer.print("    {s} {s} PRIMARY KEY", .{ column_name, sql_type });
+                    var sql_type_buf: [64]u8 = undefined;
+                    const sql_type_raw = field.getSqlType(db_provider);
+                    const sql_type = blk: {
+                        if (std.mem.indexOf(u8, sql_type_raw, "(")) |_| {
+                            var i: usize = 0;
+                            for (sql_type_raw) |c| {
+                                sql_type_buf[i] = std.ascii.toUpper(c);
+                                i += 1;
+                                if (i >= sql_type_buf.len) break;
+                            }
+                            break :blk sql_type_buf[0..sql_type_raw.len];
+                        }
+                        break :blk sql_type_raw;
+                    };
+                    try writer.print("    \"{s}\" {s} PRIMARY KEY", .{ column_name, sql_type });
                 }
             } else {
-                const sql_type = field.type.toSqlType();
-                try writer.print("    {s} {s}", .{ column_name, sql_type });
+                var sql_type_buf: [64]u8 = undefined;
+                const sql_type_raw = field.getSqlType(db_provider);
+                const sql_type = blk: {
+                    if (std.mem.indexOf(u8, sql_type_raw, "(")) |_| {
+                        var i: usize = 0;
+                        for (sql_type_raw) |c| {
+                            sql_type_buf[i] = std.ascii.toUpper(c);
+                            i += 1;
+                            if (i >= sql_type_buf.len) break;
+                        }
+                        break :blk sql_type_buf[0..sql_type_raw.len];
+                    }
+                    break :blk sql_type_raw;
+                };
+                try writer.print("    \"{s}\" {s}", .{ column_name, sql_type });
                 if (!field.optional) {
                     try writer.writeAll(" NOT NULL");
                 }
@@ -131,6 +172,8 @@ pub fn generatePushSql(allocator: std.mem.Allocator, schema: *const types.Schema
         const table_name = try model.getTableName(allocator);
         defer if (table_name.heap_allocated) allocator.free(table_name.value);
 
+        const db_provider = if (schema.datasource) |ds| ds.provider else "postgresql";
+
         try writer.print("CREATE TABLE \"{s}\" (\n", .{table_name.value});
 
         var first_field = true;
@@ -151,18 +194,57 @@ pub fn generatePushSql(allocator: std.mem.Allocator, schema: *const types.Schema
                 if (field.getDefaultValue()) |default_val| {
                     if (std.mem.eql(u8, default_val, "autoincrement()")) {
                         // Use SERIAL for PostgreSQL auto-increment
-                        try writer.print("    {s} SERIAL PRIMARY KEY", .{column_name});
+                        try writer.print("    \"{s}\" SERIAL PRIMARY KEY", .{column_name});
                     } else {
-                        const sql_type = field.type.toSqlType();
-                        try writer.print("    {s} {s} PRIMARY KEY", .{ column_name, sql_type });
+                        var sql_type_buf: [64]u8 = undefined;
+                        const sql_type_raw = field.getSqlType(db_provider);
+                        const sql_type = blk: {
+                            if (std.mem.indexOf(u8, sql_type_raw, "(")) |_| {
+                                var i: usize = 0;
+                                for (sql_type_raw) |c| {
+                                    sql_type_buf[i] = std.ascii.toUpper(c);
+                                    i += 1;
+                                    if (i >= sql_type_buf.len) break;
+                                }
+                                break :blk sql_type_buf[0..sql_type_raw.len];
+                            }
+                            break :blk sql_type_raw;
+                        };
+                        try writer.print("    \"{s}\" {s} PRIMARY KEY", .{ column_name, sql_type });
                     }
                 } else {
-                    const sql_type = field.type.toSqlType();
-                    try writer.print("    {s} {s} PRIMARY KEY", .{ column_name, sql_type });
+                    var sql_type_buf: [64]u8 = undefined;
+                    const sql_type_raw = field.getSqlType(db_provider);
+                    const sql_type = blk: {
+                        if (std.mem.indexOf(u8, sql_type_raw, "(")) |_| {
+                            var i: usize = 0;
+                            for (sql_type_raw) |c| {
+                                sql_type_buf[i] = std.ascii.toUpper(c);
+                                i += 1;
+                                if (i >= sql_type_buf.len) break;
+                            }
+                            break :blk sql_type_buf[0..sql_type_raw.len];
+                        }
+                        break :blk sql_type_raw;
+                    };
+                    try writer.print("    \"{s}\" {s} PRIMARY KEY", .{ column_name, sql_type });
                 }
             } else {
-                const sql_type = field.type.toSqlType();
-                try writer.print("    {s} {s}", .{ column_name, sql_type });
+                var sql_type_buf: [64]u8 = undefined;
+                const sql_type_raw = field.getSqlType(db_provider);
+                const sql_type = blk: {
+                    if (std.mem.indexOf(u8, sql_type_raw, "(")) |_| {
+                        var i: usize = 0;
+                        for (sql_type_raw) |c| {
+                            sql_type_buf[i] = std.ascii.toUpper(c);
+                            i += 1;
+                            if (i >= sql_type_buf.len) break;
+                        }
+                        break :blk sql_type_buf[0..sql_type_raw.len];
+                    }
+                    break :blk sql_type_raw;
+                };
+                try writer.print("    \"{s}\" {s}", .{ column_name, sql_type });
                 if (!field.optional) {
                     try writer.writeAll(" NOT NULL");
                 }
