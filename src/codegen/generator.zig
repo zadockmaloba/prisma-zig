@@ -148,8 +148,11 @@ pub const Generator = struct {
             } else if (!field.optional and field.getDefaultValue() == null) {
                 try self.output.writer(self.allocator).print("            .{s} = {s},\n", .{ field.name, field.name });
             } else if (field.getDefaultValue()) |default_val| {
-                // Handle different default value types - skip autoincrement as it's undefined
+                // Handle different default value types - skip autoincrement and dbgenerated as they're undefined
                 if (std.mem.eql(u8, default_val, "autoincrement()")) {
+                    try self.output.writer(self.allocator).print("            .{s} = undefined,\n", .{field.name});
+                } else if (std.mem.startsWith(u8, default_val, "dbgenerated(")) {
+                    // Database-generated values should be undefined in client-side init
                     try self.output.writer(self.allocator).print("            .{s} = undefined,\n", .{field.name});
                 } else if (std.mem.eql(u8, default_val, "now()")) {
                     try self.output.writer(self.allocator).print("            .{s} = std.time.timestamp(),\n", .{field.name});
