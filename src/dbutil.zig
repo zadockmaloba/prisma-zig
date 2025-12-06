@@ -41,6 +41,23 @@ pub fn generateMigrationSql(allocator: std.mem.Allocator, schema: *const types.S
                     if (std.mem.eql(u8, default_val, "autoincrement()")) {
                         // Use SERIAL for PostgreSQL auto-increment
                         try writer.print("    \"{s}\" SERIAL PRIMARY KEY", .{column_name});
+                    } else if (std.mem.eql(u8, default_val, "uuid()")) {
+                        // Handle UUID default
+                        var sql_type_buf: [64]u8 = undefined;
+                        const sql_type_raw = field.getSqlType(db_provider);
+                        const sql_type = blk: {
+                            if (std.mem.indexOf(u8, sql_type_raw, "(")) |_| {
+                                var i: usize = 0;
+                                for (sql_type_raw) |c| {
+                                    sql_type_buf[i] = std.ascii.toUpper(c);
+                                    i += 1;
+                                    if (i >= sql_type_buf.len) break;
+                                }
+                                break :blk sql_type_buf[0..sql_type_raw.len];
+                            }
+                            break :blk sql_type_raw;
+                        };
+                        try writer.print("    \"{s}\" {s} PRIMARY KEY DEFAULT gen_random_uuid()", .{ column_name, sql_type });
                     } else {
                         var sql_type_buf: [64]u8 = undefined;
                         const sql_type_raw = field.getSqlType(db_provider);
@@ -195,6 +212,23 @@ pub fn generatePushSql(allocator: std.mem.Allocator, schema: *const types.Schema
                     if (std.mem.eql(u8, default_val, "autoincrement()")) {
                         // Use SERIAL for PostgreSQL auto-increment
                         try writer.print("    \"{s}\" SERIAL PRIMARY KEY", .{column_name});
+                    } else if (std.mem.eql(u8, default_val, "uuid()")) {
+                        // Handle UUID default
+                        var sql_type_buf: [64]u8 = undefined;
+                        const sql_type_raw = field.getSqlType(db_provider);
+                        const sql_type = blk: {
+                            if (std.mem.indexOf(u8, sql_type_raw, "(")) |_| {
+                                var i: usize = 0;
+                                for (sql_type_raw) |c| {
+                                    sql_type_buf[i] = std.ascii.toUpper(c);
+                                    i += 1;
+                                    if (i >= sql_type_buf.len) break;
+                                }
+                                break :blk sql_type_buf[0..sql_type_raw.len];
+                            }
+                            break :blk sql_type_raw;
+                        };
+                        try writer.print("    \"{s}\" {s} PRIMARY KEY DEFAULT gen_random_uuid()", .{ column_name, sql_type });
                     } else {
                         var sql_type_buf: [64]u8 = undefined;
                         const sql_type_raw = field.getSqlType(db_provider);
