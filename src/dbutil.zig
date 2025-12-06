@@ -121,9 +121,15 @@ pub fn generateMigrationSql(allocator: std.mem.Allocator, schema: *const types.S
             // Add default values (skip autoincrement as it's handled above)
             if (!field.isPrimaryKey()) {
                 if (field.getDefaultValue()) |default_val| {
-                    if (!std.mem.eql(u8, default_val, "autoincrement()")) {
+                    if (!std.mem.eql(u8, default_val, "autoincrement()") and !std.mem.eql(u8, default_val, "uuid()")) {
                         if (std.mem.eql(u8, default_val, "now()")) {
                             try writer.writeAll(" DEFAULT CURRENT_TIMESTAMP");
+                        } else if (std.mem.startsWith(u8, default_val, "dbgenerated(")) {
+                            // Extract the SQL from dbgenerated("...")
+                            const start = std.mem.indexOf(u8, default_val, "\"") orelse 0;
+                            const end = std.mem.lastIndexOf(u8, default_val, "\"") orelse default_val.len;
+                            const sql_expr = if (start < end) default_val[start + 1 .. end] else "";
+                            try writer.print(" DEFAULT {s}", .{sql_expr});
                         } else if (field.type == .string) {
                             try writer.print(" DEFAULT '{s}'", .{default_val});
                         } else if (field.type == .boolean) {
@@ -229,6 +235,27 @@ pub fn generatePushSql(allocator: std.mem.Allocator, schema: *const types.Schema
                             break :blk sql_type_raw;
                         };
                         try writer.print("    \"{s}\" {s} PRIMARY KEY DEFAULT gen_random_uuid()", .{ column_name, sql_type });
+                    } else if (std.mem.startsWith(u8, default_val, "dbgenerated(")) {
+                        // Handle dbgenerated() - extract SQL expression from dbgenerated("...")
+                        var sql_type_buf: [64]u8 = undefined;
+                        const sql_type_raw = field.getSqlType(db_provider);
+                        const sql_type = blk: {
+                            if (std.mem.indexOf(u8, sql_type_raw, "(")) |_| {
+                                var i: usize = 0;
+                                for (sql_type_raw) |c| {
+                                    sql_type_buf[i] = std.ascii.toUpper(c);
+                                    i += 1;
+                                    if (i >= sql_type_buf.len) break;
+                                }
+                                break :blk sql_type_buf[0..sql_type_raw.len];
+                            }
+                            break :blk sql_type_raw;
+                        };
+                        // Extract the SQL from dbgenerated("...")
+                        const start = std.mem.indexOf(u8, default_val, "\"") orelse 0;
+                        const end = std.mem.lastIndexOf(u8, default_val, "\"") orelse default_val.len;
+                        const sql_expr = if (start < end) default_val[start + 1 .. end] else "";
+                        try writer.print("    \"{s}\" {s} PRIMARY KEY DEFAULT {s}", .{ column_name, sql_type, sql_expr });
                     } else {
                         var sql_type_buf: [64]u8 = undefined;
                         const sql_type_raw = field.getSqlType(db_provider);
@@ -289,9 +316,15 @@ pub fn generatePushSql(allocator: std.mem.Allocator, schema: *const types.Schema
 
                 // Add default values for non-primary-key fields
                 if (field.getDefaultValue()) |default_val| {
-                    if (!std.mem.eql(u8, default_val, "autoincrement()")) {
+                    if (!std.mem.eql(u8, default_val, "autoincrement()") and !std.mem.eql(u8, default_val, "uuid()")) {
                         if (std.mem.eql(u8, default_val, "now()")) {
                             try writer.writeAll(" DEFAULT CURRENT_TIMESTAMP");
+                        } else if (std.mem.startsWith(u8, default_val, "dbgenerated(")) {
+                            // Extract the SQL from dbgenerated("...")
+                            const start = std.mem.indexOf(u8, default_val, "\"") orelse 0;
+                            const end = std.mem.lastIndexOf(u8, default_val, "\"") orelse default_val.len;
+                            const sql_expr = if (start < end) default_val[start + 1 .. end] else "";
+                            try writer.print(" DEFAULT {s}", .{sql_expr});
                         } else if (field.type == .string) {
                             try writer.print(" DEFAULT '{s}'", .{default_val});
                         } else if (field.type == .boolean) {

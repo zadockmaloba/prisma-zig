@@ -514,9 +514,9 @@ pub const Parser = struct {
                     }
 
                     if (func_content.items.len > 0) {
-                        // Special handling for dbgenerated() - just return the database function
+                        // Special handling for dbgenerated() - preserve the wrapper so we can detect it later
                         if (std.mem.eql(u8, token.lexeme, "dbgenerated")) {
-                            value = .{ .value = try self.allocator.dupe(u8, func_content.items), .heap_allocated = true, .allocator = self.allocator };
+                            value = .{ .value = try std.fmt.allocPrint(self.allocator, "dbgenerated(\"{s}\")", .{func_content.items}), .heap_allocated = true, .allocator = self.allocator };
                         } else {
                             value = .{ .value = try std.fmt.allocPrint(self.allocator, "{s}({s})", .{ token.lexeme, func_content.items }), .heap_allocated = true, .allocator = self.allocator };
                         }
