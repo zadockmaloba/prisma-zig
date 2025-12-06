@@ -522,7 +522,8 @@ pub const Generator = struct {
                         try output.writer(self.allocator).print("            records[idx].{s} = try row.getOpt(\"{s}\", bool);\n", .{ field.name, column_name });
                     },
                     .datetime => {
-                        try output.writer(self.allocator).print("            records[idx].{s} = try dt.unixTimeFromISO8601( try row.getOpt(\"{s}\", []const u8) );\n", .{ field.name, column_name });
+                        try output.writer(self.allocator).print("            const {s}_str = try row.getOpt(\"{s}\", []const u8);\n", .{ field.name, column_name });
+                        try output.writer(self.allocator).print("            records[idx].{s} = if ({s}_str) |str| try dt.unixTimeFromISO8601(str) else null;\n", .{ field.name, field.name });
                     },
                     else => {},
                 }
@@ -648,7 +649,8 @@ pub const Generator = struct {
                         try output.writer(self.allocator).print("            record.{s} = try row.getOpt(\"{s}\", bool);\n", .{ field.name, column_name });
                     },
                     .datetime => {
-                        try output.writer(self.allocator).print("            record.{s} = try dt.unixTimeFromISO8601( try row.getOpt(\"{s}\", []const u8) );\n", .{ field.name, column_name });
+                        try output.writer(self.allocator).print("            const {s}_str = try row.getOpt(\"{s}\", []const u8);\n", .{ field.name, column_name });
+                        try output.writer(self.allocator).print("            record.{s} = if ({s}_str) |str| try dt.unixTimeFromISO8601(str) else null;\n", .{ field.name, field.name });
                     },
                     else => {},
                 }
@@ -664,7 +666,7 @@ pub const Generator = struct {
                         try output.writer(self.allocator).print("            record.{s} = try row.get(\"{s}\", bool);\n", .{ field.name, column_name });
                     },
                     .datetime => {
-                        try output.writer(self.allocator).print("            record.{s} = try dt.unixTimeFromISO8601( try row.get(\"{s}\", []const u8) );\n", .{ field.name, column_name });
+                        try output.writer(self.allocator).print("            record.{s} = try dt.unixTimeFromISO8601(try row.get(\"{s}\", []const u8));\n", .{ field.name, column_name });
                     },
                     else => {},
                 }

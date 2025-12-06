@@ -466,8 +466,8 @@ pub const UserOperations = struct {
             record.id = try row.get("id", i32);
             record.email = try row.get("email", []const u8);
             record.name = try row.getOpt("name", []const u8);
-            record.createdAt = try dt.unixTimeFromISO8601( try row.get("createdAt", []const u8) );
-            record.updatedAt = try dt.unixTimeFromISO8601( try row.get("updatedAt", []const u8) );
+            record.createdAt = try dt.unixTimeFromISO8601(try row.get("createdAt", []const u8));
+            record.updatedAt = try dt.unixTimeFromISO8601(try row.get("updatedAt", []const u8));
             return record;
         }
 
@@ -845,7 +845,7 @@ pub const PostOperations = struct {
             record.content = try row.getOpt("content", []const u8);
             record.published = try row.get("published", bool);
             record.authorId = try row.get("authorId", i32);
-            record.createdAt = try dt.unixTimeFromISO8601( try row.get("createdAt", []const u8) );
+            record.createdAt = try dt.unixTimeFromISO8601(try row.get("createdAt", []const u8));
             return record;
         }
 
