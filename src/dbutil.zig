@@ -157,6 +157,76 @@ pub fn generateMigrationSql(allocator: std.mem.Allocator, schema: *const types.S
                 try writer.print("-- CreateIndex\nCREATE UNIQUE INDEX \"{s}_{s}_key\" ON \"{s}\"({s});\n\n", .{ table_name.value, column_name, table_name.value, column_name });
             }
         }
+
+        // Handle model-level @@index(...) attributes
+        for (model.indexes.items) |idx| {
+            const raw = idx.value;
+            // Extract fields between [ and ]
+            if (std.mem.indexOf(u8, raw, "[")) |bs| {
+                var be = bs + 1;
+                while (be < raw.len and raw[be] != ']') : (be += 1) {}
+                if (be >= raw.len) be = raw.len - 1;
+                const fields_slice = raw[bs + 1 .. be];
+
+                // Split fields by comma
+                var parts: std.ArrayList([]const u8) = .empty;
+                defer parts.deinit(allocator);
+                var start: usize = 0;
+                var i: usize = 0;
+                while (i <= fields_slice.len) {
+                    if (i == fields_slice.len or fields_slice[i] == ',') {
+                        // trim start..i
+                        var s = start;
+                        var e = i;
+                        while (s < e and std.ascii.isWhitespace(fields_slice[s])) s += 1;
+                        while (e > s and std.ascii.isWhitespace(fields_slice[e - 1])) e -= 1;
+                        if (e > s) {
+                            try parts.append(allocator, fields_slice[s..e]);
+                        }
+                        start = i + 1;
+                    }
+                    i += 1;
+                }
+
+                // Build quoted column list and find first field for fallback name
+                var col_list: std.ArrayList(u8) = .empty;
+                defer col_list.deinit(allocator);
+                var first_col_name: []const u8 = "";
+                var first = true;
+                for (parts.items) |p| {
+                    // p is field name (may include whitespace)
+                    const field_name = p;
+                    var column_name: []const u8 = field_name;
+                    if (model.getField(field_name)) |f| {
+                        column_name = f.getColumnName();
+                    }
+                    if (!first) try col_list.appendSlice(allocator, ", ");
+                    try col_list.appendSlice(allocator, "\"");
+                    try col_list.appendSlice(allocator, column_name);
+                    try col_list.appendSlice(allocator, "\"");
+                    if (first) {
+                        first_col_name = column_name;
+                        first = false;
+                    }
+                }
+
+                // Determine index name if provided: look for name: "..."
+                var index_name: ?[]const u8 = null;
+                if (std.mem.indexOf(u8, raw, "name")) |npos| {
+                    var q1: usize = npos;
+                    while (q1 < raw.len and raw[q1] != '"') : (q1 += 1) {}
+                    const q2 = std.mem.lastIndexOf(u8, raw, "\"") orelse raw.len;
+                    if (q1 < q2) {
+                        index_name = raw[q1 + 1 .. q2];
+                    }
+                }
+
+                const idx_name = if (index_name) |inm| inm else try std.fmt.allocPrint(allocator, "{s}_{s}_idx", .{ table_name.value, first_col_name });
+                defer if (index_name == null) allocator.free(idx_name);
+
+                try writer.print("-- Create model index\nCREATE INDEX \"{s}\" ON \"{s}\"({s});\n\n", .{ idx_name, table_name.value, col_list.items });
+            }
+        }
     }
 
     return sql.toOwnedSlice(allocator);
@@ -339,6 +409,81 @@ pub fn generatePushSql(allocator: std.mem.Allocator, schema: *const types.Schema
         }
 
         try writer.writeAll("\n);\n\n");
+    }
+
+    // Generate indexes for unique fields and model-level @@index
+    for (schema.models.items) |*model| {
+        const table_name = try model.getTableName(allocator);
+        defer if (table_name.heap_allocated) allocator.free(table_name.value);
+
+        // Handle model-level @@index(...) attributes
+        for (model.indexes.items) |idx| {
+            const raw = idx.value;
+            // Extract fields between [ and ]
+            if (std.mem.indexOf(u8, raw, "[")) |bs| {
+                var be = bs + 1;
+                while (be < raw.len and raw[be] != ']') : (be += 1) {}
+                if (be >= raw.len) be = raw.len - 1;
+                const fields_slice = raw[bs + 1 .. be];
+
+                // Split fields by comma
+                var parts: std.ArrayList([]const u8) = .empty;
+                defer parts.deinit(allocator);
+                var start: usize = 0;
+                var i: usize = 0;
+                while (i <= fields_slice.len) {
+                    if (i == fields_slice.len or fields_slice[i] == ',') {
+                        // trim start..i
+                        var s = start;
+                        var e = i;
+                        while (s < e and std.ascii.isWhitespace(fields_slice[s])) s += 1;
+                        while (e > s and std.ascii.isWhitespace(fields_slice[e - 1])) e -= 1;
+                        if (e > s) {
+                            try parts.append(allocator, fields_slice[s..e]);
+                        }
+                        start = i + 1;
+                    }
+                    i += 1;
+                }
+
+                // Build quoted column list and find first field for fallback name
+                var col_list: std.ArrayList(u8) = .empty;
+                defer col_list.deinit(allocator);
+                var first_col_name: []const u8 = "";
+                var first = true;
+                for (parts.items) |p| {
+                    // p is field name (may include whitespace)
+                    const field_name = p;
+                    var column_name: []const u8 = field_name;
+                    if (model.getField(field_name)) |f| {
+                        column_name = f.getColumnName();
+                    }
+                    if (!first) try col_list.appendSlice(allocator, ", ");
+                    //try col_list.appendSlice(allocator, "\"");
+                    try col_list.appendSlice(allocator, column_name);
+                    //try col_list.appendSlice(allocator, "\"");
+                    if (first) {
+                        first_col_name = column_name;
+                        first = false;
+                    }
+                }
+
+                // Determine index name if provided: look for name: "..."
+                var index_name: ?[]const u8 = null;
+                if (std.mem.indexOf(u8, raw, "name")) |npos| {
+                    const q1 = std.mem.indexOfPos(u8, raw, npos, "\"") orelse 0;
+                    const q2 = std.mem.lastIndexOf(u8, raw, "\"") orelse raw.len;
+                    if (q1 < q2) {
+                        index_name = raw[q1 + 1 .. q2];
+                    }
+                }
+
+                const idx_name = if (index_name) |inm| inm else try std.fmt.allocPrint(allocator, "{s}_{s}_idx", .{ table_name.value, first_col_name });
+                defer if (index_name == null) allocator.free(idx_name);
+
+                try writer.print("-- Create model index\nCREATE INDEX \"{s}\" ON \"{s}\"({s});\n\n", .{ idx_name, table_name.value, col_list.items });
+            }
+        }
     }
 
     return sql.toOwnedSlice(allocator);

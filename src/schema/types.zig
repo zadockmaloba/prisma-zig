@@ -343,6 +343,7 @@ pub const Field = struct {
 pub const PrismaModel = struct {
     name: []const u8,
     fields: std.ArrayList(Field),
+    indexes: std.ArrayList(String),
     table_name: ?[]const u8, // From @@map attribute
     allocator: std.mem.Allocator,
 
@@ -351,6 +352,7 @@ pub const PrismaModel = struct {
             .name = name,
             .allocator = allocator,
             .fields = .empty,
+            .indexes = .empty,
             .table_name = null,
         };
     }
@@ -363,12 +365,23 @@ pub const PrismaModel = struct {
             field.deinit();
         }
 
+        // free model-level indexes
+        for (self.indexes.items) |idx| {
+            if (idx.heap_allocated) idx.allocator.?.free(idx.value);
+        }
+        self.indexes.deinit(self.allocator);
+
         self.fields.deinit(self.allocator);
     }
 
     /// Add a field to the model
     pub fn addField(self: *PrismaModel, field: Field) !void {
         try self.fields.append(self.allocator, field);
+    }
+
+    /// Add a model-level index raw attribute string (content inside parentheses)
+    pub fn addIndex(self: *PrismaModel, idx: String) !void {
+        try self.indexes.append(self.allocator, idx);
     }
 
     /// Get the database table name (using @@map if present, otherwise lowercase model name)

@@ -334,6 +334,19 @@ pub const Parser = struct {
                     // Remove quotes from string literal
                     const table_name = table_name_token.lexeme[1 .. table_name_token.lexeme.len - 1];
                     model.table_name = table_name;
+                } else if (std.mem.eql(u8, attr_name.lexeme, "index")) {
+                    // Capture raw content inside @@index(...)
+                    _ = try self.consume(.left_paren, "Expected '('");
+                    var buf: std.ArrayList(u8) = .empty;
+                    while (!self.isAtEnd() and !self.match(.right_paren)) {
+                        // append current token lexeme
+                        try buf.appendSlice(self.allocator, self.current_token.lexeme);
+                        self.advance();
+                    }
+                    const content = try self.allocator.dupe(u8, buf.items);
+                    buf.deinit(self.allocator);
+                    // store raw content for index handling later
+                    try model.addIndex(.{ .value = content, .heap_allocated = true, .allocator = self.allocator });
                 }
 
                 // Skip to next line
