@@ -256,14 +256,12 @@ pub fn generateMigrationSql(allocator: std.mem.Allocator, schema: *const types.S
                         const references = rel.references.?;
 
                         // Determine the referenced table name from the field type
-                        const ref_table_name = field.type.getModelName() orelse continue;
+                        const ref_model_name = field.type.getModelName() orelse continue;
 
-                        // Convert to lowercase for table name (following Prisma convention)
-                        var ref_table_lower = try allocator.alloc(u8, ref_table_name.len);
-                        defer allocator.free(ref_table_lower);
-                        for (ref_table_name, 0..) |c, i| {
-                            ref_table_lower[i] = std.ascii.toLower(c);
-                        }
+                        // Get the actual table name from the referenced model (respects @@map)
+                        const ref_model_lookup = schema.getModel(ref_model_name) orelse continue;
+                        const ref_table = try ref_model_lookup.getTableName(allocator);
+                        defer if (ref_table.heap_allocated) allocator.free(ref_table.value);
 
                         // Build field list and reference list using mapped column names
                         var field_list: std.ArrayList(u8) = .empty;
@@ -287,7 +285,7 @@ pub fn generateMigrationSql(allocator: std.mem.Allocator, schema: *const types.S
                         }
 
                         // Get the referenced model to map reference field names to column names
-                        const ref_model = schema.getModel(ref_table_name);
+                        const ref_model = schema.getModel(ref_model_name);
                         for (references, 0..) |ref, i| {
                             if (i > 0) try ref_list.appendSlice(allocator, ", ");
                             try ref_list.append(allocator, '"');
@@ -320,7 +318,7 @@ pub fn generateMigrationSql(allocator: std.mem.Allocator, schema: *const types.S
                         const constraint_name = try std.fmt.allocPrint(allocator, "{s}_{s}_fkey", .{ table_name.value, fields[0].value });
                         defer allocator.free(constraint_name);
 
-                        try writer.print("-- Create foreign key constraint\nALTER TABLE \"{s}\" ADD CONSTRAINT \"{s}\" FOREIGN KEY ({s}) REFERENCES \"{s}\"({s}) ON DELETE {s} ON UPDATE {s};\n\n", .{ table_name.value, constraint_name, field_list.items, ref_table_lower, ref_list.items, on_delete, on_update });
+                        try writer.print("-- Create foreign key constraint\nALTER TABLE \"{s}\" ADD CONSTRAINT \"{s}\" FOREIGN KEY ({s}) REFERENCES \"{s}\"({s}) ON DELETE {s} ON UPDATE {s};\n\n", .{ table_name.value, constraint_name, field_list.items, ref_table.value, ref_list.items, on_delete, on_update });
                     }
                 }
             }
@@ -601,14 +599,12 @@ pub fn generatePushSql(allocator: std.mem.Allocator, schema: *const types.Schema
                         const references = rel.references.?;
 
                         // Determine the referenced table name from the field type
-                        const ref_table_name = field.type.getModelName() orelse continue;
+                        const ref_model_name = field.type.getModelName() orelse continue;
 
-                        // Convert to lowercase for table name (following Prisma convention)
-                        var ref_table_lower = try allocator.alloc(u8, ref_table_name.len);
-                        defer allocator.free(ref_table_lower);
-                        for (ref_table_name, 0..) |c, i| {
-                            ref_table_lower[i] = std.ascii.toLower(c);
-                        }
+                        // Get the actual table name from the referenced model (respects @@map)
+                        const ref_model_lookup = schema.getModel(ref_model_name) orelse continue;
+                        const ref_table = try ref_model_lookup.getTableName(allocator);
+                        defer if (ref_table.heap_allocated) allocator.free(ref_table.value);
 
                         // Build field list and reference list using mapped column names
                         var field_list: std.ArrayList(u8) = .empty;
@@ -632,7 +628,7 @@ pub fn generatePushSql(allocator: std.mem.Allocator, schema: *const types.Schema
                         }
 
                         // Get the referenced model to map reference field names to column names
-                        const ref_model = schema.getModel(ref_table_name);
+                        const ref_model = schema.getModel(ref_model_name);
                         for (references, 0..) |ref, i| {
                             if (i > 0) try ref_list.appendSlice(allocator, ", ");
                             try ref_list.append(allocator, '"');
@@ -665,7 +661,7 @@ pub fn generatePushSql(allocator: std.mem.Allocator, schema: *const types.Schema
                         const constraint_name = try std.fmt.allocPrint(allocator, "{s}_{s}_fkey", .{ table_name.value, fields[0].value });
                         defer allocator.free(constraint_name);
 
-                        try writer.print("-- Create foreign key constraint\nALTER TABLE \"{s}\" ADD CONSTRAINT \"{s}\" FOREIGN KEY ({s}) REFERENCES \"{s}\"({s}) ON DELETE {s} ON UPDATE {s};\n\n", .{ table_name.value, constraint_name, field_list.items, ref_table_lower, ref_list.items, on_delete, on_update });
+                        try writer.print("-- Create foreign key constraint\nALTER TABLE \"{s}\" ADD CONSTRAINT \"{s}\" FOREIGN KEY ({s}) REFERENCES \"{s}\"({s}) ON DELETE {s} ON UPDATE {s};\n\n", .{ table_name.value, constraint_name, field_list.items, ref_table.value, ref_list.items, on_delete, on_update });
                     }
                 }
             }
