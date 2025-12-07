@@ -265,23 +265,44 @@ pub fn generateMigrationSql(allocator: std.mem.Allocator, schema: *const types.S
                             ref_table_lower[i] = std.ascii.toLower(c);
                         }
 
-                        // Build field list and reference list
+                        // Build field list and reference list using mapped column names
                         var field_list: std.ArrayList(u8) = .empty;
                         defer field_list.deinit(allocator);
                         var ref_list: std.ArrayList(u8) = .empty;
                         defer ref_list.deinit(allocator);
 
+                        // Map field names to actual column names (handle @map)
                         for (fields, 0..) |fld, i| {
                             if (i > 0) try field_list.appendSlice(allocator, ", ");
                             try field_list.append(allocator, '"');
-                            try field_list.appendSlice(allocator, fld.value);
+
+                            // Look up the field in the current model to get its column name
+                            if (model.getField(fld.value)) |field_def| {
+                                try field_list.appendSlice(allocator, field_def.getColumnName());
+                            } else {
+                                // Fallback to field name if not found
+                                try field_list.appendSlice(allocator, fld.value);
+                            }
                             try field_list.append(allocator, '"');
                         }
 
+                        // Get the referenced model to map reference field names to column names
+                        const ref_model = schema.getModel(ref_table_name);
                         for (references, 0..) |ref, i| {
                             if (i > 0) try ref_list.appendSlice(allocator, ", ");
                             try ref_list.append(allocator, '"');
-                            try ref_list.appendSlice(allocator, ref.value);
+
+                            // Look up the field in the referenced model to get its column name
+                            if (ref_model) |rm| {
+                                if (rm.getField(ref.value)) |ref_field_def| {
+                                    try ref_list.appendSlice(allocator, ref_field_def.getColumnName());
+                                } else {
+                                    try ref_list.appendSlice(allocator, ref.value);
+                                }
+                            } else {
+                                // Fallback to field name if model not found
+                                try ref_list.appendSlice(allocator, ref.value);
+                            }
                             try ref_list.append(allocator, '"');
                         }
 
@@ -589,23 +610,44 @@ pub fn generatePushSql(allocator: std.mem.Allocator, schema: *const types.Schema
                             ref_table_lower[i] = std.ascii.toLower(c);
                         }
 
-                        // Build field list and reference list
+                        // Build field list and reference list using mapped column names
                         var field_list: std.ArrayList(u8) = .empty;
                         defer field_list.deinit(allocator);
                         var ref_list: std.ArrayList(u8) = .empty;
                         defer ref_list.deinit(allocator);
 
+                        // Map field names to actual column names (handle @map)
                         for (fields, 0..) |fld, i| {
                             if (i > 0) try field_list.appendSlice(allocator, ", ");
                             try field_list.append(allocator, '"');
-                            try field_list.appendSlice(allocator, fld.value);
+
+                            // Look up the field in the current model to get its column name
+                            if (model.getField(fld.value)) |field_def| {
+                                try field_list.appendSlice(allocator, field_def.getColumnName());
+                            } else {
+                                // Fallback to field name if not found
+                                try field_list.appendSlice(allocator, fld.value);
+                            }
                             try field_list.append(allocator, '"');
                         }
 
+                        // Get the referenced model to map reference field names to column names
+                        const ref_model = schema.getModel(ref_table_name);
                         for (references, 0..) |ref, i| {
                             if (i > 0) try ref_list.appendSlice(allocator, ", ");
                             try ref_list.append(allocator, '"');
-                            try ref_list.appendSlice(allocator, ref.value);
+
+                            // Look up the field in the referenced model to get its column name
+                            if (ref_model) |rm| {
+                                if (rm.getField(ref.value)) |ref_field_def| {
+                                    try ref_list.appendSlice(allocator, ref_field_def.getColumnName());
+                                } else {
+                                    try ref_list.appendSlice(allocator, ref.value);
+                                }
+                            } else {
+                                // Fallback to field name if model not found
+                                try ref_list.appendSlice(allocator, ref.value);
+                            }
                             try ref_list.append(allocator, '"');
                         }
 
