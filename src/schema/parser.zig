@@ -377,19 +377,33 @@ pub const Parser = struct {
             is_array = true;
         }
 
-        // Create the full type string for parsing
-        var full_type_str: []u8 = undefined;
-        if (is_array) {
-            full_type_str = try std.fmt.allocPrint(self.allocator, "{s}[]", .{type_str});
-        } else {
-            full_type_str = try self.allocator.dupe(u8, type_str);
-        }
-        defer self.allocator.free(full_type_str);
+        // For primitive types, we don't need to allocate anything
+        // For model references, we need to allocate the string
+        var field_type: FieldType = undefined;
+        var allocated_type_str: ?[]u8 = null;
 
-        const field_type = FieldType.fromString(full_type_str) orelse {
-            std.log.err("Unknown field type: {s} at line {d}", .{ full_type_str, type_token.line });
-            return ParseError.UnknownFieldType;
-        };
+        if (is_array) {
+            // Array types always need allocation
+            allocated_type_str = try std.fmt.allocPrint(self.allocator, "{s}[]", .{type_str});
+            field_type = FieldType.fromString(allocated_type_str.?) orelse {
+                self.allocator.free(allocated_type_str.?);
+                std.log.err("Unknown field type: {s} at line {d}", .{ allocated_type_str.?, type_token.line });
+                return ParseError.UnknownFieldType;
+            };
+        } else {
+            // Check if it's a primitive type first (no allocation needed)
+            if (FieldType.fromString(type_str)) |ft| {
+                field_type = ft;
+                // If it's a model_ref, we need to allocate
+                if (ft == .model_ref) {
+                    allocated_type_str = try self.allocator.dupe(u8, type_str);
+                    field_type = FieldType{ .model_ref = allocated_type_str.? };
+                }
+            } else {
+                std.log.err("Unknown field type: {s} at line {d}", .{ type_str, type_token.line });
+                return ParseError.UnknownFieldType;
+            }
+        }
 
         var field = try Field.init(self.allocator, field_name, field_type);
 
@@ -564,28 +578,60 @@ pub const Parser = struct {
                     const key = self.current_token.lexeme;
                     self.advance();
 
-                    if (std.mem.eql(u8, key, "fields") or std.mem.eql(u8, key, "references")) {
-                        // Skip the colon and array contents for now
+                    if (std.mem.eql(u8, key, "fields")) {
+                        // Capture fields array: [field1, field2]
                         if (self.match(.colon)) {
-                            // Skip array contents [field1, field2]
                             if (self.match(.left_bracket)) {
-                                var bracket_depth: i32 = 1;
-                                while (!self.isAtEnd() and bracket_depth > 0) {
-                                    const token = self.current_token;
-                                    self.advance();
-                                    if (token.type == .left_bracket) {
-                                        bracket_depth += 1;
-                                    } else if (token.type == .right_bracket) {
-                                        bracket_depth -= 1;
+                                var fields_list: std.ArrayList(String) = .empty;
+                                while (!self.isAtEnd() and self.current_token.type != .right_bracket) {
+                                    if (self.current_token.type == .identifier) {
+                                        try fields_list.append(self.allocator, .{
+                                            .value = try self.allocator.dupe(u8, self.current_token.lexeme),
+                                            .heap_allocated = true,
+                                            .allocator = self.allocator,
+                                        });
                                     }
+                                    self.advance();
+                                    _ = self.match(.comma); // Skip comma if present
                                 }
+                                _ = self.match(.right_bracket);
+                                relation.fields = try fields_list.toOwnedSlice(self.allocator);
                             }
                         }
-                    } else if (std.mem.eql(u8, key, "onDelete") or std.mem.eql(u8, key, "onUpdate")) {
-                        // Skip onDelete/onUpdate actions like NoAction, Cascade, SetNull
+                    } else if (std.mem.eql(u8, key, "references")) {
+                        // Capture references array: [id, otherId]
+                        if (self.match(.colon)) {
+                            if (self.match(.left_bracket)) {
+                                var refs_list: std.ArrayList(String) = .empty;
+                                while (!self.isAtEnd() and self.current_token.type != .right_bracket) {
+                                    if (self.current_token.type == .identifier) {
+                                        try refs_list.append(self.allocator, .{
+                                            .value = try self.allocator.dupe(u8, self.current_token.lexeme),
+                                            .heap_allocated = true,
+                                            .allocator = self.allocator,
+                                        });
+                                    }
+                                    self.advance();
+                                    _ = self.match(.comma); // Skip comma if present
+                                }
+                                _ = self.match(.right_bracket);
+                                relation.references = try refs_list.toOwnedSlice(self.allocator);
+                            }
+                        }
+                    } else if (std.mem.eql(u8, key, "onDelete")) {
+                        // Capture onDelete action
                         if (self.match(.colon)) {
                             if (self.current_token.type == .identifier) {
-                                self.advance(); // Skip the action name
+                                relation.onDelete = self.current_token.lexeme;
+                                self.advance();
+                            }
+                        }
+                    } else if (std.mem.eql(u8, key, "onUpdate")) {
+                        // Capture onUpdate action
+                        if (self.match(.colon)) {
+                            if (self.current_token.type == .identifier) {
+                                relation.onUpdate = self.current_token.lexeme;
+                                self.advance();
                             }
                         }
                     }

@@ -11,6 +11,7 @@ pub const FieldType = union(enum) {
     // Primitive types
     string,
     int,
+    float,
     boolean,
     datetime,
 
@@ -23,13 +24,14 @@ pub const FieldType = union(enum) {
         // Check for primitive types first
         if (std.mem.eql(u8, type_str, "String")) return .string;
         if (std.mem.eql(u8, type_str, "Int")) return .int;
+        if (std.mem.eql(u8, type_str, "Float")) return .float;
         if (std.mem.eql(u8, type_str, "Boolean")) return .boolean;
         if (std.mem.eql(u8, type_str, "DateTime")) return .datetime;
 
         // Check for array type (ends with [])
         if (std.mem.endsWith(u8, type_str, "[]")) {
-            const model_name = type_str[0 .. type_str.len - 2];
-            return FieldType{ .model_array = model_name };
+            // Store the full string including "[]"
+            return FieldType{ .model_array = type_str };
         }
 
         // Check if it's a valid model reference (starts with uppercase)
@@ -39,12 +41,12 @@ pub const FieldType = union(enum) {
 
         return null;
     }
-
     /// Convert field type to PostgreSQL column type
     pub fn toSqlType(self: FieldType) []const u8 {
         return switch (self) {
             .string => "TEXT",
             .int => "INTEGER",
+            .float => "DOUBLE PRECISION",
             .boolean => "BOOLEAN",
             .datetime => "TIMESTAMP",
             .model_ref => "INTEGER", // Foreign key as integer
@@ -57,6 +59,7 @@ pub const FieldType = union(enum) {
         return switch (self) {
             .string => "[]const u8",
             .int => "i32",
+            .float => "f64",
             .boolean => "bool",
             .datetime => "i64", // Unix timestamp
             .model_ref => |model_name| model_name, // Use the model name as type
@@ -84,9 +87,23 @@ pub const FieldType = union(enum) {
     pub fn getModelName(self: FieldType) ?[]const u8 {
         return switch (self) {
             .model_ref => |name| name,
-            .model_array => |name| name,
+            .model_array => |full_name| {
+                // Strip the "[]" suffix to return just the model name
+                if (std.mem.endsWith(u8, full_name, "[]")) {
+                    return full_name[0 .. full_name.len - 2];
+                }
+                return full_name;
+            },
             else => null,
         };
+    }
+
+    pub fn deinit(self: FieldType, allocator: std.mem.Allocator) void {
+        switch (self) {
+            .model_ref => |name| allocator.free(name),
+            .model_array => |full_name| allocator.free(full_name),
+            else => {},
+        }
     }
 };
 
@@ -95,9 +112,34 @@ pub const RelationAttribute = struct {
     name: ?String = null, // Optional relation name
     fields: ?[]String = null, // [authorId, categoryId]
     references: ?[]String = null, // [id, id]
+    onDelete: ?[]const u8 = null, // Cascade, NoAction, SetNull, etc.
+    onUpdate: ?[]const u8 = null, // Cascade, NoAction, SetNull, etc.
 
     pub fn init() RelationAttribute {
         return RelationAttribute{};
+    }
+
+    pub fn deinit(self: *const RelationAttribute, allocator: std.mem.Allocator) void {
+        if (self.fields) |fields| {
+            for (fields) |field| {
+                if (field.heap_allocated) {
+                    if (field.allocator) |alloc| {
+                        alloc.free(field.value);
+                    }
+                }
+            }
+            allocator.free(fields);
+        }
+        if (self.references) |references| {
+            for (references) |ref| {
+                if (ref.heap_allocated) {
+                    if (ref.allocator) |alloc| {
+                        alloc.free(ref.value);
+                    }
+                }
+            }
+            allocator.free(references);
+        }
     }
 };
 
@@ -139,7 +181,6 @@ pub const FieldAttribute = union(enum) {
     }
 
     pub fn deinit(self: FieldAttribute, allocator: std.mem.Allocator) void {
-        _ = allocator;
         switch (self) {
             .map => {
                 if (self.map.heap_allocated) self.map.allocator.?.free(self.map.value);
@@ -151,18 +192,7 @@ pub const FieldAttribute = union(enum) {
                 if (self.db_type.heap_allocated) self.db_type.allocator.?.free(self.db_type.value);
             },
             .relation => |rel| {
-                // Free relation fields if they were allocated
-                if (rel.fields) |fields| {
-                    for (fields) |field| {
-                        if (field.heap_allocated) field.allocator.?.free(field.value);
-                    }
-                    // Note: We'd need to store the allocator in RelationAttribute to free the array itself
-                }
-                if (rel.references) |references| {
-                    for (references) |ref| {
-                        if (ref.heap_allocated) ref.allocator.?.free(ref.value);
-                    }
-                }
+                rel.deinit(allocator);
             },
             else => {},
         }
@@ -220,6 +250,9 @@ pub const Field = struct {
     }
 
     pub fn deinit(self: *Field) void {
+        // Free the field type if it owns memory
+        self.type.deinit(self.allocator);
+
         // Free the field name (allocated by allocator.dupe)
         for (self.attributes.items) |attribute| {
             attribute.deinit(self.allocator);

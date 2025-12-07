@@ -207,6 +207,7 @@ pub const Generator = struct {
                 switch (field.type) {
                     .string => try output.writer(self.allocator).print("            try values.writer(allocator).print(\"'{{s}}'\", .{{self.{s}}});\n", .{field.name}),
                     .int => try output.writer(self.allocator).print("            try values.writer(allocator).print(\"{{d}}\", .{{self.{s}}});\n", .{field.name}),
+                    .float => try output.writer(self.allocator).print("            try values.writer(allocator).print(\"{{d}}\", .{{self.{s}}});\n", .{field.name}),
                     .boolean => try output.writer(self.allocator).print("            try values.appendSlice(allocator, if (self.{s}) \"true\" else \"false\");\n", .{field.name}),
                     .datetime => try output.writer(self.allocator).print("            try values.writer(allocator).print(\"to_timestamp({{d}})\", .{{self.{s}}});\n", .{field.name}),
                     .model_ref, .model_array => {
@@ -226,6 +227,7 @@ pub const Generator = struct {
             switch (field.type) {
                 .string => try output.appendSlice(self.allocator, "                try values.writer(allocator).print(\"'{s}'\", .{val});\n"),
                 .int => try output.appendSlice(self.allocator, "                try values.writer(allocator).print(\"{d}\", .{val});\n"),
+                .float => try output.appendSlice(self.allocator, "                try values.writer(allocator).print(\"{d}\", .{val});\n"),
                 .boolean => try output.appendSlice(self.allocator, "                try values.appendSlice(allocator, if (val) \"true\" else \"false\");\n"),
                 .datetime => try output.appendSlice(self.allocator, "                try values.writer(allocator).print(\"to_timestamp({d})\", .{val});\n"),
                 .model_ref, .model_array => {
@@ -362,6 +364,7 @@ pub const Generator = struct {
             const filter_type = switch (field.type) {
                 .string => "StringFilter",
                 .int => "IntFilter",
+                .float => "FloatFilter",
                 .boolean => "BooleanFilter",
                 .datetime => "DateTimeFilter",
                 .model_ref, .model_array => unreachable, // Should be skipped above

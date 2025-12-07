@@ -2,6 +2,16 @@ const std = @import("std");
 const pq = @import("libpq_zig");
 const types = @import("schema/types.zig");
 
+// Helper function to map Prisma referential actions to SQL
+fn mapReferentialAction(action: []const u8) []const u8 {
+    if (std.mem.eql(u8, action, "Cascade")) return "CASCADE";
+    if (std.mem.eql(u8, action, "NoAction")) return "NO ACTION";
+    if (std.mem.eql(u8, action, "SetNull")) return "SET NULL";
+    if (std.mem.eql(u8, action, "SetDefault")) return "SET DEFAULT";
+    if (std.mem.eql(u8, action, "Restrict")) return "RESTRICT";
+    return "NO ACTION"; // Default fallback
+}
+
 pub fn generateMigrationSql(allocator: std.mem.Allocator, schema: *const types.Schema) ![]u8 {
     var sql: std.ArrayList(u8) = .empty;
     defer sql.deinit(allocator);
@@ -225,6 +235,73 @@ pub fn generateMigrationSql(allocator: std.mem.Allocator, schema: *const types.S
                 defer if (index_name == null) allocator.free(idx_name);
 
                 try writer.print("-- Create model index\nCREATE INDEX \"{s}\" ON \"{s}\"({s});\n\n", .{ idx_name, table_name.value, col_list.items });
+            }
+        }
+    }
+
+    // Generate foreign key constraints
+    for (schema.models.items) |*model| {
+        const table_name = try model.getTableName(allocator);
+        defer if (table_name.heap_allocated) allocator.free(table_name.value);
+
+        for (model.fields.items) |field| {
+            // Check if this field has a @relation attribute with fields and references
+            for (field.attributes.items) |attr| {
+                if (attr == .relation) {
+                    const rel = attr.relation;
+
+                    // Only generate FK if this side defines the fields (owning side)
+                    if (rel.fields != null and rel.references != null and rel.fields.?.len > 0 and rel.references.?.len > 0) {
+                        const fields = rel.fields.?;
+                        const references = rel.references.?;
+
+                        // Determine the referenced table name from the field type
+                        const ref_table_name = field.type.getModelName() orelse continue;
+
+                        // Convert to lowercase for table name (following Prisma convention)
+                        var ref_table_lower = try allocator.alloc(u8, ref_table_name.len);
+                        defer allocator.free(ref_table_lower);
+                        for (ref_table_name, 0..) |c, i| {
+                            ref_table_lower[i] = std.ascii.toLower(c);
+                        }
+
+                        // Build field list and reference list
+                        var field_list: std.ArrayList(u8) = .empty;
+                        defer field_list.deinit(allocator);
+                        var ref_list: std.ArrayList(u8) = .empty;
+                        defer ref_list.deinit(allocator);
+
+                        for (fields, 0..) |fld, i| {
+                            if (i > 0) try field_list.appendSlice(allocator, ", ");
+                            try field_list.append(allocator, '"');
+                            try field_list.appendSlice(allocator, fld.value);
+                            try field_list.append(allocator, '"');
+                        }
+
+                        for (references, 0..) |ref, i| {
+                            if (i > 0) try ref_list.appendSlice(allocator, ", ");
+                            try ref_list.append(allocator, '"');
+                            try ref_list.appendSlice(allocator, ref.value);
+                            try ref_list.append(allocator, '"');
+                        }
+
+                        // Map Prisma actions to SQL
+                        const on_delete = if (rel.onDelete) |action|
+                            mapReferentialAction(action)
+                        else
+                            "NO ACTION";
+                        const on_update = if (rel.onUpdate) |action|
+                            mapReferentialAction(action)
+                        else
+                            "NO ACTION";
+
+                        // Generate constraint name
+                        const constraint_name = try std.fmt.allocPrint(allocator, "{s}_{s}_fkey", .{ table_name.value, fields[0].value });
+                        defer allocator.free(constraint_name);
+
+                        try writer.print("-- Create foreign key constraint\nALTER TABLE \"{s}\" ADD CONSTRAINT \"{s}\" FOREIGN KEY ({s}) REFERENCES \"{s}\"({s}) ON DELETE {s} ON UPDATE {s};\n\n", .{ table_name.value, constraint_name, field_list.items, ref_table_lower, ref_list.items, on_delete, on_update });
+                    }
+                }
             }
         }
     }
@@ -459,9 +536,9 @@ pub fn generatePushSql(allocator: std.mem.Allocator, schema: *const types.Schema
                         column_name = f.getColumnName();
                     }
                     if (!first) try col_list.appendSlice(allocator, ", ");
-                    //try col_list.appendSlice(allocator, "\"");
+                    try col_list.appendSlice(allocator, "\"");
                     try col_list.appendSlice(allocator, column_name);
-                    //try col_list.appendSlice(allocator, "\"");
+                    try col_list.appendSlice(allocator, "\"");
                     if (first) {
                         first_col_name = column_name;
                         first = false;
@@ -482,6 +559,73 @@ pub fn generatePushSql(allocator: std.mem.Allocator, schema: *const types.Schema
                 defer if (index_name == null) allocator.free(idx_name);
 
                 try writer.print("-- Create model index\nCREATE INDEX \"{s}\" ON \"{s}\"({s});\n\n", .{ idx_name, table_name.value, col_list.items });
+            }
+        }
+    }
+
+    // Generate foreign key constraints
+    for (schema.models.items) |*model| {
+        const table_name = try model.getTableName(allocator);
+        defer if (table_name.heap_allocated) allocator.free(table_name.value);
+
+        for (model.fields.items) |field| {
+            // Check if this field has a @relation attribute with fields and references
+            for (field.attributes.items) |attr| {
+                if (attr == .relation) {
+                    const rel = attr.relation;
+
+                    // Only generate FK if this side defines the fields (owning side)
+                    if (rel.fields != null and rel.references != null and rel.fields.?.len > 0 and rel.references.?.len > 0) {
+                        const fields = rel.fields.?;
+                        const references = rel.references.?;
+
+                        // Determine the referenced table name from the field type
+                        const ref_table_name = field.type.getModelName() orelse continue;
+
+                        // Convert to lowercase for table name (following Prisma convention)
+                        var ref_table_lower = try allocator.alloc(u8, ref_table_name.len);
+                        defer allocator.free(ref_table_lower);
+                        for (ref_table_name, 0..) |c, i| {
+                            ref_table_lower[i] = std.ascii.toLower(c);
+                        }
+
+                        // Build field list and reference list
+                        var field_list: std.ArrayList(u8) = .empty;
+                        defer field_list.deinit(allocator);
+                        var ref_list: std.ArrayList(u8) = .empty;
+                        defer ref_list.deinit(allocator);
+
+                        for (fields, 0..) |fld, i| {
+                            if (i > 0) try field_list.appendSlice(allocator, ", ");
+                            try field_list.append(allocator, '"');
+                            try field_list.appendSlice(allocator, fld.value);
+                            try field_list.append(allocator, '"');
+                        }
+
+                        for (references, 0..) |ref, i| {
+                            if (i > 0) try ref_list.appendSlice(allocator, ", ");
+                            try ref_list.append(allocator, '"');
+                            try ref_list.appendSlice(allocator, ref.value);
+                            try ref_list.append(allocator, '"');
+                        }
+
+                        // Map Prisma actions to SQL
+                        const on_delete = if (rel.onDelete) |action|
+                            mapReferentialAction(action)
+                        else
+                            "NO ACTION";
+                        const on_update = if (rel.onUpdate) |action|
+                            mapReferentialAction(action)
+                        else
+                            "NO ACTION";
+
+                        // Generate constraint name
+                        const constraint_name = try std.fmt.allocPrint(allocator, "{s}_{s}_fkey", .{ table_name.value, fields[0].value });
+                        defer allocator.free(constraint_name);
+
+                        try writer.print("-- Create foreign key constraint\nALTER TABLE \"{s}\" ADD CONSTRAINT \"{s}\" FOREIGN KEY ({s}) REFERENCES \"{s}\"({s}) ON DELETE {s} ON UPDATE {s};\n\n", .{ table_name.value, constraint_name, field_list.items, ref_table_lower, ref_list.items, on_delete, on_update });
+                    }
+                }
             }
         }
     }

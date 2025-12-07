@@ -571,6 +571,9 @@ fn dbPush(allocator: std.mem.Allocator, args: [][:0]u8) !void {
     std.debug.print("✓ Generated SQL commands\n", .{});
     std.debug.print("✓ Applying schema changes to database...\n", .{});
 
+    // Debug: print the SQL being executed
+    std.debug.print("\n=== SQL TO EXECUTE ===\n{s}\n=== END SQL ===\n\n", .{push_sql});
+
     var conn = pq.Connection.init(allocator);
     defer conn.deinit();
     conn.connect("postgresql://postgres:postgres@localhost:5432/postgres") catch |err| {
