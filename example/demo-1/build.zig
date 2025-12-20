@@ -1,28 +1,16 @@
 const std = @import("std");
+const prisma_build = @import("prisma_zig");
 
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    const prisma_zig = b.dependency("prisma_zig", .{
-        .target = target,
-        .optimize = optimize,
-    });
+    prisma_build.addPrismaBuildSteps(b, target, optimize);
+ 
     const libpq_zig = b.dependency("libpq_zig", .{
         .target = target,
         .optimize = optimize,
     });
-
-
-    // Compile a small runner that executes the schema code generator at build-time.
-    const codegen_runner = b.addExecutable(.{
-        .name = "prisma_zig_codegen",
-        .root_module = prisma_zig.module("prisma_zig"),
-    });
-    const prisma_step = b.step("prisma", "Run Prisma schema code generator");
-    const prisma_cmd = b.addRunArtifact(codegen_runner);
-    prisma_step.dependOn(&prisma_cmd.step);
-
 
     const exe = b.addExecutable(.{
         .name = "demo_1",
@@ -45,7 +33,6 @@ pub fn build(b: *std.Build) void {
 
     if (b.args) |args| {
         run_cmd.addArgs(args);
-        prisma_cmd.addArgs(args);
     }
 
 

@@ -13,7 +13,7 @@ A modern database toolkit for Zig, inspired by Prisma. Generate type-safe databa
 
 ## Quick Start
 
-### Installation
+### Integration with your Zig projects
 
 Add Prisma Zig to your `build.zig.zon`:
 
@@ -23,7 +23,20 @@ Add Prisma Zig to your `build.zig.zon`:
         .url = "https://github.com/zadockmaloba/prisma-zig/archive/refs/tags/v0.1.0.tar.gz",
         .hash = "...",
     },
-},
+}
+```
+
+Add the following to your `build.zig`:
+```zig
+const prisma_build = @import("prisma_zig");
+
+pub fn build(b: *std.Build) void {
+    const target = b.standardTargetOptions(.{});
+    const optimize = b.standardOptimizeOption(.{});
+
+    prisma_build.addPrismaBuildSteps(b, target, optimize);
+    ...
+}
 ```
 
 ### Define Your Schema
