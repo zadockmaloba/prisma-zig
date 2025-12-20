@@ -68,10 +68,10 @@ model Post {
 
 ```bash
 # Initialize Prisma in your project
-prisma-zig init
+zig build prisma -- init
 
 # Generate the Zig client code
-prisma-zig generate
+zig build prisma -- generate
 ```
 
 ### Use in Your Application
@@ -307,7 +307,7 @@ try client.user.delete(.{
 ### Initialize a Project
 
 ```bash
-prisma-zig init
+zig build prisma -- init
 ```
 
 Creates a new Prisma schema file in your project.
@@ -315,7 +315,7 @@ Creates a new Prisma schema file in your project.
 ### Generate Client Code
 
 ```bash
-prisma-zig generate
+zig build prisma -- generate
 ```
 
 Generates type-safe Zig client code from your schema.
@@ -324,36 +324,36 @@ Generates type-safe Zig client code from your schema.
 
 ```bash
 # Create and apply migrations
-prisma-zig migrate-dev
+zig build prisma -- migrate-dev
 
 # Apply pending migrations
-prisma-zig migrate
+zig build prisma -- migrate
 
 # View migration status
-prisma-zig migrate-status
+zig build prisma -- migrate-status
 ```
 
 ### Database Operations
 
 ```bash
 # Pull schema from existing database
-prisma-zig db-pull
+zig build prisma -- db-pull
 
 # Push schema changes to database
-prisma-zig db-push
+zig build prisma -- db-push
 ```
 
 ### Utility Commands
 
 ```bash
 # Validate schema
-prisma-zig validate
+zig build prisma -- validate
 
 # Format schema file
-prisma-zig format
+zig build prisma -- format
 
 # Show version
-prisma-zig version
+zig build prisma -- version
 ```
 
 ## Project Structure
