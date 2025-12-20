@@ -456,4 +456,4 @@ MIT License - see LICENSE file for details
 
 - Inspired by [Prisma](https://www.prisma.io/)
 - Built with [Zig](https://ziglang.org/)
-- PostgreSQL support via [libpq_zig](https://github.com/karlseguin/pg.zig)
+- PostgreSQL support via [libpq_zig](https://github.com/allyourcodebase/libpq)
