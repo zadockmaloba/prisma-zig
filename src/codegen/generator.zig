@@ -3,6 +3,7 @@ const schema_types = @import("../schema/types.zig");
 
 const Schema = schema_types.Schema;
 const PrismaModel = schema_types.PrismaModel;
+const PrismaEnum = schema_types.PrismaEnum;
 const Field = schema_types.Field;
 const FieldType = schema_types.FieldType;
 const FieldAttribute = schema_types.FieldAttribute;
@@ -37,6 +38,12 @@ pub const Generator = struct {
     pub fn generateClient(self: *Generator) CodeGenError![]u8 {
         // Generate file header
         try self.generateHeader();
+
+        // Generate enums
+        for (self.schema.enums.items) |*prisma_enum| {
+            try self.generateEnum(prisma_enum);
+            try self.output.append(self.allocator, '\n');
+        }
 
         // Generate model structs
         for (self.schema.models.items) |*model| {
@@ -73,6 +80,20 @@ pub const Generator = struct {
             \\
         ;
         try self.output.appendSlice(self.allocator, header);
+    }
+
+    /// Generate a Zig enum from a Prisma enum
+    fn generateEnum(self: *Generator, prisma_enum: *const schema_types.PrismaEnum) CodeGenError!void {
+        // Generate enum comment
+        try self.output.writer(self.allocator).print("/// {s} enum\n", .{prisma_enum.name});
+        try self.output.writer(self.allocator).print("pub const {s} = enum {{\n", .{prisma_enum.name});
+
+        // Generate enum values
+        for (prisma_enum.values.items) |value| {
+            try self.output.writer(self.allocator).print("    {s},\n", .{value});
+        }
+
+        try self.output.appendSlice(self.allocator, "};\n");
     }
 
     /// Generate a Zig struct for a Prisma model

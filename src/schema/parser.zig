@@ -3,6 +3,7 @@ const types = @import("types.zig");
 
 const Schema = types.Schema;
 const PrismaModel = types.PrismaModel;
+const PrismaEnum = types.PrismaEnum;
 const Field = types.Field;
 const FieldType = types.FieldType;
 const FieldAttribute = types.FieldAttribute;
@@ -20,6 +21,7 @@ const TokenType = enum {
 
     // Keywords
     model,
+    @"enum",
     generator,
     datasource,
 
@@ -220,6 +222,7 @@ const Lexer = struct {
     fn getIdentifierType(self: *Lexer, text: []const u8) TokenType {
         _ = self;
         if (std.mem.eql(u8, text, "model")) return .model;
+        if (std.mem.eql(u8, text, "enum")) return .@"enum";
         if (std.mem.eql(u8, text, "generator")) return .generator;
         if (std.mem.eql(u8, text, "datasource")) return .datasource;
         return .identifier;
@@ -254,6 +257,10 @@ pub const Parser = struct {
                 .model => {
                     const model = try self.parseModel();
                     try schema.addModel(model);
+                },
+                .@"enum" => {
+                    const prisma_enum = try self.parseEnum();
+                    try schema.addEnum(prisma_enum);
                 },
                 .generator => {
                     schema.generator = try self.parseGenerator();
@@ -361,6 +368,47 @@ pub const Parser = struct {
         }
 
         return model;
+    }
+
+    fn parseEnum(self: *Parser) ParseError!types.PrismaEnum {
+        _ = try self.consume(.@"enum", "Expected 'enum'");
+
+        const name_token = try self.consume(.identifier, "Expected enum name");
+        const enum_name = name_token.lexeme;
+        _ = try self.consume(.left_brace, "Expected '{'");
+
+        var prisma_enum = try types.PrismaEnum.init(self.allocator, enum_name);
+
+        while (!self.match(.right_brace)) {
+            if (self.match(.newline)) {
+                continue;
+            }
+
+            if (self.current_token.type == .eof) {
+                std.log.err("Unexpected end of file in enum definition", .{});
+                return ParseError.InvalidSyntax;
+            }
+
+            // Parse enum value (should be an identifier)
+            if (self.current_token.type == .identifier) {
+                const value_token = self.current_token;
+                try prisma_enum.addValue(value_token.lexeme);
+                self.advance();
+
+                // Skip to next line
+                while (!self.isAtEnd() and self.current_token.type != .newline and self.current_token.type != .right_brace) {
+                    self.advance();
+                }
+                if (self.current_token.type == .newline) {
+                    self.advance();
+                }
+            } else {
+                std.log.err("Expected enum value at line {d}, got: {s}", .{ self.current_token.line, self.current_token.lexeme });
+                return ParseError.InvalidSyntax;
+            }
+        }
+
+        return prisma_enum;
     }
 
     fn parseField(self: *Parser) ParseError!Field {

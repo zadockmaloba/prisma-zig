@@ -216,7 +216,7 @@ fn generateClient(allocator: std.mem.Allocator) !void {
     };
     defer schema.deinit();
 
-    std.debug.print("✓ Schema parsed successfully! Found {} models\n", .{schema.models.items.len});
+    std.debug.print("✓ Schema parsed successfully! Found {} models and {} enums\n", .{ schema.models.items.len, schema.enums.items.len });
 
     // Generate client code
     var code_generator = generator.Generator.init(allocator, &schema);

@@ -462,10 +462,34 @@ pub const PrismaModel = struct {
     // }
 };
 
+/// Represents a Prisma enum
+pub const PrismaEnum = struct {
+    name: []const u8,
+    values: std.ArrayList([]const u8),
+    allocator: std.mem.Allocator,
+
+    pub fn init(allocator: std.mem.Allocator, name: []const u8) !PrismaEnum {
+        return PrismaEnum{
+            .name = name,
+            .values = .empty,
+            .allocator = allocator,
+        };
+    }
+
+    pub fn deinit(self: *PrismaEnum) void {
+        self.values.deinit(self.allocator);
+    }
+
+    pub fn addValue(self: *PrismaEnum, value: []const u8) !void {
+        try self.values.append(self.allocator, value);
+    }
+};
+
 /// Represents the entire Prisma schema
 pub const Schema = struct {
     allocator: std.mem.Allocator,
     models: std.ArrayList(PrismaModel),
+    enums: std.ArrayList(PrismaEnum),
     generator: ?GeneratorConfig,
     datasource: ?DatasourceConfig,
 
@@ -473,6 +497,7 @@ pub const Schema = struct {
         return Schema{
             .allocator = allocator,
             .models = .empty,
+            .enums = .empty,
             .generator = null,
             .datasource = null,
         };
@@ -494,6 +519,12 @@ pub const Schema = struct {
             model.deinit();
         }
         self.models.deinit(self.allocator);
+
+        // Free all enums
+        for (self.enums.items) |*prisma_enum| {
+            prisma_enum.deinit();
+        }
+        self.enums.deinit(self.allocator);
     }
 
     /// Add a model to the schema
@@ -501,11 +532,26 @@ pub const Schema = struct {
         try self.models.append(self.allocator, model);
     }
 
+    /// Add an enum to the schema
+    pub fn addEnum(self: *Schema, prisma_enum: PrismaEnum) !void {
+        try self.enums.append(self.allocator, prisma_enum);
+    }
+
     /// Find a model by name
     pub fn getModel(self: *const Schema, model_name: []const u8) ?*const PrismaModel {
         for (self.models.items) |*model| {
             if (std.mem.eql(u8, model.name, model_name)) {
                 return model;
+            }
+        }
+        return null;
+    }
+
+    /// Find an enum by name
+    pub fn getEnum(self: *const Schema, enum_name: []const u8) ?*const PrismaEnum {
+        for (self.enums.items) |*prisma_enum| {
+            if (std.mem.eql(u8, prisma_enum.name, enum_name)) {
+                return prisma_enum;
             }
         }
         return null;
