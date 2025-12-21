@@ -16,6 +16,51 @@ pub const CodeGenError = error{
     UnsupportedType,
 };
 
+/// Check if a field is a true relation (not an enum)
+fn isFieldRelation(field: *const Field, schema: *const Schema) bool {
+    if (!field.type.isRelation()) return false;
+
+    // If it's a model_ref, check if it's actually an enum
+    if (field.type == .model_ref) {
+        const type_name = field.type.model_ref;
+        if (schema.getEnum(type_name)) |_| {
+            // It's an enum, not a relation
+            return false;
+        }
+    }
+
+    return true;
+}
+
+/// Check if a name is a Zig keyword and needs escaping
+// FIXME: This can be optimised
+fn needsEscape(name: []const u8) bool {
+    const keywords = [_][]const u8{
+        "align",  "allowzero", "and",         "anyframe",       "anytype",     "asm",
+        "async",  "await",     "break",       "callconv",       "catch",       "comptime",
+        "const",  "continue",  "defer",       "else",           "enum",        "errdefer",
+        "error",  "export",    "extern",      "fn",             "for",         "if",
+        "inline", "noalias",   "nosuspend",   "noinline",       "opaque",      "or",
+        "orelse", "packed",    "pub",         "resume",         "return",      "linksection",
+        "struct", "suspend",   "switch",      "test",           "threadlocal", "try",
+        "type",   "union",     "unreachable", "usingnamespace", "var",         "volatile",
+        "while",
+    };
+
+    for (keywords) |keyword| {
+        if (std.mem.eql(u8, name, keyword)) return true;
+    }
+    return false;
+}
+
+/// Escape a field name if it's a Zig keyword
+fn escapeFieldName(allocator: std.mem.Allocator, name: []const u8) ![]const u8 {
+    if (needsEscape(name)) {
+        return std.fmt.allocPrint(allocator, "@\"{s}\"", .{name});
+    }
+    return name;
+}
+
 /// Main code generator struct
 pub const Generator = struct {
     allocator: std.mem.Allocator,
@@ -105,7 +150,8 @@ pub const Generator = struct {
         // Generate fields
         for (model.fields.items) |*field| {
             // Skip relationship fields for now - they'll be handled separately
-            if (field.type.isRelation()) {
+            // But keep enum fields (they're stored as values, not relations)
+            if (isFieldRelation(field, self.schema)) {
                 continue;
             }
 
@@ -127,7 +173,9 @@ pub const Generator = struct {
                 try self.output.writer(self.allocator).print("    /// Default: {s}\n", .{default_val});
             }
 
-            try self.output.writer(self.allocator).print("    {s}: {s}{s},\n", .{ field.name, optional_marker, zig_type });
+            const escaped_name = try escapeFieldName(self.allocator, field.name);
+            defer if (needsEscape(field.name)) self.allocator.free(escaped_name);
+            try self.output.writer(self.allocator).print("    {s}: {s}{s},\n", .{ escaped_name, optional_marker, zig_type });
         }
 
         // Generate helper methods
@@ -146,7 +194,7 @@ pub const Generator = struct {
         var first = true;
         for (model.fields.items) |*field| {
             // Skip relationship fields, optional fields, and fields with defaults
-            if (field.type.isRelation() or field.optional or field.getDefaultValue() != null) {
+            if (isFieldRelation(field, self.schema) or field.optional or field.getDefaultValue() != null) {
                 continue;
             }
             // Skip primary keys with autoincrement (they're database-generated)
@@ -155,7 +203,9 @@ pub const Generator = struct {
             }
             if (!first) try self.output.appendSlice(self.allocator, ", ");
             first = false;
-            try self.output.writer(self.allocator).print("{s}: {s}", .{ field.name, field.type.toZigType() });
+            const escaped_name = try escapeFieldName(self.allocator, field.name);
+            defer if (needsEscape(field.name)) self.allocator.free(escaped_name);
+            try self.output.writer(self.allocator).print("{s}: {s}", .{ escaped_name, field.type.toZigType() });
         }
 
         try self.output.writer(self.allocator).print(") {s} {{\n", .{model.name});
@@ -163,27 +213,39 @@ pub const Generator = struct {
 
         // Initialize all fields
         for (model.fields.items) |*field| {
-            if (field.type.isRelation()) {
+            const escaped_name = try escapeFieldName(self.allocator, field.name);
+            defer if (needsEscape(field.name)) self.allocator.free(escaped_name);
+
+            if (isFieldRelation(field, self.schema)) {
                 // Skip relationship fields - they'll be loaded separately
                 continue;
             } else if (!field.optional and field.getDefaultValue() == null) {
-                try self.output.writer(self.allocator).print("            .{s} = {s},\n", .{ field.name, field.name });
+                try self.output.writer(self.allocator).print("            .{s} = {s},\n", .{ escaped_name, escaped_name });
             } else if (field.getDefaultValue()) |default_val| {
                 // Handle different default value types - skip autoincrement and dbgenerated as they're undefined
                 if (std.mem.eql(u8, default_val, "autoincrement()")) {
-                    try self.output.writer(self.allocator).print("            .{s} = undefined,\n", .{field.name});
+                    try self.output.writer(self.allocator).print("            .{s} = undefined,\n", .{escaped_name});
                 } else if (std.mem.startsWith(u8, default_val, "dbgenerated(")) {
                     // Database-generated values should be undefined in client-side init
-                    try self.output.writer(self.allocator).print("            .{s} = undefined,\n", .{field.name});
+                    try self.output.writer(self.allocator).print("            .{s} = undefined,\n", .{escaped_name});
                 } else if (std.mem.eql(u8, default_val, "now()")) {
-                    try self.output.writer(self.allocator).print("            .{s} = std.time.timestamp(),\n", .{field.name});
+                    try self.output.writer(self.allocator).print("            .{s} = std.time.timestamp(),\n", .{escaped_name});
                 } else if (field.type == .string) {
-                    try self.output.writer(self.allocator).print("            .{s} = \"{s}\",\n", .{ field.name, default_val });
+                    try self.output.writer(self.allocator).print("            .{s} = \"{s}\",\n", .{ escaped_name, default_val });
+                } else if (field.type == .model_ref) {
+                    // Check if it's an enum type - if so, qualify with enum name
+                    const type_name = field.type.model_ref;
+                    if (self.schema.getEnum(type_name)) |_| {
+                        try self.output.writer(self.allocator).print("            .{s} = {s}.{s},\n", .{ escaped_name, type_name, default_val });
+                    } else {
+                        // It's a relation - shouldn't have a default
+                        try self.output.writer(self.allocator).print("            .{s} = {s},\n", .{ escaped_name, default_val });
+                    }
                 } else {
-                    try self.output.writer(self.allocator).print("            .{s} = {s},\n", .{ field.name, default_val });
+                    try self.output.writer(self.allocator).print("            .{s} = {s},\n", .{ escaped_name, default_val });
                 }
             } else {
-                try self.output.writer(self.allocator).print("            .{s} = null,\n", .{field.name});
+                try self.output.writer(self.allocator).print("            .{s} = null,\n", .{escaped_name});
             }
         }
 
