@@ -20,7 +20,7 @@ Add Prisma Zig to your `build.zig.zon`:
 ```zig
 .dependencies = .{
     .prisma_zig = .{
-        .url = "https://github.com/zadockmaloba/prisma-zig/archive/refs/tags/v0.1.0.tar.gz",
+        .url = "https://github.com/zadockmaloba/prisma-zig/archive/refs/tags/v0.1.11.tar.gz",
         .hash = "...",
     },
     .libpq_zig = .{
