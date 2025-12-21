@@ -23,6 +23,10 @@ Add Prisma Zig to your `build.zig.zon`:
         .url = "https://github.com/zadockmaloba/prisma-zig/archive/refs/tags/v0.1.0.tar.gz",
         .hash = "...",
     },
+    .libpq_zig = .{
+        .url = "https://github.com/zadockmaloba/libpq-zig/archive/refs/tags/0.1.4.zip",
+        .hash = "...",
+    },
 }
 ```
 
