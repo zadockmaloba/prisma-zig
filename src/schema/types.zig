@@ -14,6 +14,7 @@ pub const FieldType = union(enum) {
     float,
     boolean,
     datetime,
+    decimal,
 
     // Model references
     model_ref: []const u8, // e.g., "User"
@@ -27,6 +28,7 @@ pub const FieldType = union(enum) {
         if (std.mem.eql(u8, type_str, "Float")) return .float;
         if (std.mem.eql(u8, type_str, "Boolean")) return .boolean;
         if (std.mem.eql(u8, type_str, "DateTime")) return .datetime;
+        if (std.mem.eql(u8, type_str, "Decimal")) return .decimal;
 
         // Check for array type (ends with [])
         if (std.mem.endsWith(u8, type_str, "[]")) {
@@ -49,6 +51,7 @@ pub const FieldType = union(enum) {
             .float => "DOUBLE PRECISION",
             .boolean => "BOOLEAN",
             .datetime => "TIMESTAMP",
+            .decimal => "DECIMAL",
             .model_ref => "INTEGER", // Foreign key as integer
             .model_array => "", // Arrays don't have direct SQL representation (handled via relations)
         };
@@ -62,6 +65,7 @@ pub const FieldType = union(enum) {
             .float => "f64",
             .boolean => "bool",
             .datetime => "i64", // Unix timestamp
+            .decimal => "f64", // Use f64 for decimal values
             .model_ref => |model_name| model_name, // Use the model name as type
             .model_array => |model_name| model_name, // Will be handled specially in codegen
         };
@@ -350,6 +354,14 @@ pub const Field = struct {
                         return db_type; // Return full "VarChar(255)" - will be uppercased in SQL
                     }
                     return "VARCHAR";
+                }
+
+                // Handle DECIMAL/NUMERIC with precision and scale
+                if (std.mem.startsWith(u8, db_type, "Decimal")) {
+                    if (std.mem.indexOf(u8, db_type, "(")) |_| {
+                        return db_type; // Return full "Decimal(18,6)"
+                    }
+                    return "DECIMAL";
                 }
 
                 // Handle TIMESTAMPTZ with precision

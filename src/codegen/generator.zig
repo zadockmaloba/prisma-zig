@@ -293,6 +293,7 @@ pub const Generator = struct {
                     .float => try output.writer(self.allocator).print("            try values.writer(allocator).print(\"{{d}}\", .{{self.{s}}});\n", .{field.name}),
                     .boolean => try output.writer(self.allocator).print("            try values.appendSlice(allocator, if (self.{s}) \"true\" else \"false\");\n", .{field.name}),
                     .datetime => try output.writer(self.allocator).print("            try values.writer(allocator).print(\"to_timestamp({{d}})\", .{{self.{s}}});\n", .{field.name}),
+                    .decimal => try output.writer(self.allocator).print("            try values.writer(allocator).print(\"{{d}}\", .{{self.{s}}});\n", .{field.name}),
                     .model_ref, .model_array => {
                         // Relationship fields should be skipped above, but handle gracefully
                         try output.appendSlice(self.allocator, "            // Relationship field - handled separately\n");
@@ -313,6 +314,7 @@ pub const Generator = struct {
                 .float => try output.appendSlice(self.allocator, "                try values.writer(allocator).print(\"{d}\", .{val});\n"),
                 .boolean => try output.appendSlice(self.allocator, "                try values.appendSlice(allocator, if (val) \"true\" else \"false\");\n"),
                 .datetime => try output.appendSlice(self.allocator, "                try values.writer(allocator).print(\"to_timestamp({d})\", .{val});\n"),
+                .decimal => try output.appendSlice(self.allocator, "                try values.writer(allocator).print(\"{d}\", .{val});\n"),
                 .model_ref, .model_array => {
                     // Relationship fields should be skipped above, but handle gracefully
                     try output.appendSlice(self.allocator, "                // Relationship field - handled separately\n");
@@ -362,6 +364,24 @@ pub const Generator = struct {
         try output.appendSlice(self.allocator, "    lte: ?i64 = null,\n");
         try output.appendSlice(self.allocator, "    gt: ?i64 = null,\n");
         try output.appendSlice(self.allocator, "    gte: ?i64 = null,\n");
+        try output.appendSlice(self.allocator, "};\n\n");
+
+        try output.appendSlice(self.allocator, "/// Float filter options\n");
+        try output.appendSlice(self.allocator, "pub const FloatFilter = struct {\n");
+        try output.appendSlice(self.allocator, "    equals: ?f64 = null,\n");
+        try output.appendSlice(self.allocator, "    lt: ?f64 = null,\n");
+        try output.appendSlice(self.allocator, "    lte: ?f64 = null,\n");
+        try output.appendSlice(self.allocator, "    gt: ?f64 = null,\n");
+        try output.appendSlice(self.allocator, "    gte: ?f64 = null,\n");
+        try output.appendSlice(self.allocator, "};\n\n");
+
+        try output.appendSlice(self.allocator, "/// Decimal filter options\n");
+        try output.appendSlice(self.allocator, "pub const DecimalFilter = struct {\n");
+        try output.appendSlice(self.allocator, "    equals: ?f64 = null,\n");
+        try output.appendSlice(self.allocator, "    lt: ?f64 = null,\n");
+        try output.appendSlice(self.allocator, "    lte: ?f64 = null,\n");
+        try output.appendSlice(self.allocator, "    gt: ?f64 = null,\n");
+        try output.appendSlice(self.allocator, "    gte: ?f64 = null,\n");
         try output.appendSlice(self.allocator, "};\n\n");
     }
 
@@ -450,6 +470,7 @@ pub const Generator = struct {
                 .float => "FloatFilter",
                 .boolean => "BooleanFilter",
                 .datetime => "DateTimeFilter",
+                .decimal => "DecimalFilter",
                 .model_ref, .model_array => unreachable, // Should be skipped above
             };
 
@@ -701,6 +722,12 @@ pub const Generator = struct {
                     try output.writer(self.allocator).print("                _ = try query_builder.sql(\"{s} = \");\n", .{column_name});
                     try output.appendSlice(self.allocator, "                _ = try query_builder.sql(val_str);\n");
                 },
+                .float, .decimal => {
+                    try output.writer(self.allocator).print("                const val_str = try std.fmt.allocPrint(self.allocator, \"{{d}}\", .{{value}});\n", .{});
+                    try output.appendSlice(self.allocator, "                defer self.allocator.free(val_str);\n");
+                    try output.writer(self.allocator).print("                _ = try query_builder.sql(\"{s} = \");\n", .{column_name});
+                    try output.appendSlice(self.allocator, "                _ = try query_builder.sql(val_str);\n");
+                },
                 else => {},
             }
 
@@ -821,6 +848,12 @@ pub const Generator = struct {
                     try output.appendSlice(self.allocator, "            _ = try query_builder.sql(val_str);\n");
                     try output.appendSlice(self.allocator, "            _ = try query_builder.sql(\")\");\n");
                 },
+                .float, .decimal => {
+                    try output.appendSlice(self.allocator, "            const val_str = try std.fmt.allocPrint(self.allocator, \"{d}\", .{value});\n");
+                    try output.appendSlice(self.allocator, "            defer self.allocator.free(val_str);\n");
+                    try output.writer(self.allocator).print("            _ = try query_builder.sql(\"{s} = \");\n", .{column_name});
+                    try output.appendSlice(self.allocator, "            _ = try query_builder.sql(val_str);\n");
+                },
                 else => {},
             }
             try output.appendSlice(self.allocator, "        }\n");
@@ -867,6 +900,12 @@ pub const Generator = struct {
                     try output.writer(self.allocator).print("                _ = try query_builder.sql(\"{s} = to_timestamp(\");\n", .{column_name});
                     try output.appendSlice(self.allocator, "                _ = try query_builder.sql(val_str);\n");
                     try output.appendSlice(self.allocator, "                _ = try query_builder.sql(\")\");\n");
+                },
+                .float, .decimal => {
+                    try output.appendSlice(self.allocator, "                const val_str = try std.fmt.allocPrint(self.allocator, \"{d}\", .{value});\n");
+                    try output.appendSlice(self.allocator, "                defer self.allocator.free(val_str);\n");
+                    try output.writer(self.allocator).print("                _ = try query_builder.sql(\"{s} = \");\n", .{column_name});
+                    try output.appendSlice(self.allocator, "                _ = try query_builder.sql(val_str);\n");
                 },
                 else => {},
             }
@@ -927,6 +966,12 @@ pub const Generator = struct {
                 },
                 .datetime => {
                     try output.appendSlice(self.allocator, "                const val_str = try std.fmt.allocPrint(self.allocator, \"to_timestamp({d})\", .{value});\n");
+                    try output.appendSlice(self.allocator, "                defer self.allocator.free(val_str);\n");
+                    try output.writer(self.allocator).print("                _ = try query_builder.sql(\"{s} = \");\n", .{column_name});
+                    try output.appendSlice(self.allocator, "                _ = try query_builder.sql(val_str);\n");
+                },
+                .float, .decimal => {
+                    try output.appendSlice(self.allocator, "                const val_str = try std.fmt.allocPrint(self.allocator, \"{d}\", .{value});\n");
                     try output.appendSlice(self.allocator, "                defer self.allocator.free(val_str);\n");
                     try output.writer(self.allocator).print("                _ = try query_builder.sql(\"{s} = \");\n", .{column_name});
                     try output.appendSlice(self.allocator, "                _ = try query_builder.sql(val_str);\n");
