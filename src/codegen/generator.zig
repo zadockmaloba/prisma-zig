@@ -552,16 +552,16 @@ pub const Generator = struct {
                 // Optional field handling
                 switch (field.type) {
                     .string => {
-                        try output.writer(self.allocator).print("            record.{s} = try row.getOpt(\"{s}\", []const u8);\n", .{ field.name, column_name });
+                        try output.writer(self.allocator).print("            record.{s} = try row.getOpt(\"\\\"{s}\\\"\", []const u8);\n", .{ field.name, column_name });
                     },
                     .int => {
-                        try output.writer(self.allocator).print("            record.{s} = try row.getOpt(\"{s}\", i32);\n", .{ field.name, column_name });
+                        try output.writer(self.allocator).print("            record.{s} = try row.getOpt(\"\\\"{s}\\\"\", i32);\n", .{ field.name, column_name });
                     },
                     .boolean => {
-                        try output.writer(self.allocator).print("            record.{s} = try row.getOpt(\"{s}\", bool);\n", .{ field.name, column_name });
+                        try output.writer(self.allocator).print("            record.{s} = try row.getOpt(\"\\\"{s}\\\"\", bool);\n", .{ field.name, column_name });
                     },
                     .datetime => {
-                        try output.writer(self.allocator).print("            const {s}_str = try row.getOpt(\"{s}\", []const u8);\n", .{ field.name, column_name });
+                        try output.writer(self.allocator).print("            const {s}_str = try row.getOpt(\"\\\"{s}\\\"\", []const u8);\n", .{ field.name, column_name });
                         try output.writer(self.allocator).print("            record.{s} = if ({s}_str) |str| try dt.unixTimeFromISO8601(str) else null;\n", .{ field.name, field.name });
                     },
                     else => {},
@@ -570,16 +570,16 @@ pub const Generator = struct {
                 // Non-optional field handling
                 switch (field.type) {
                     .string => {
-                        try output.writer(self.allocator).print("            record.{s} = try row.get(\"{s}\", []const u8);\n", .{ field.name, column_name });
+                        try output.writer(self.allocator).print("            record.{s} = try row.get(\"\\\"{s}\\\"\", []const u8);\n", .{ field.name, column_name });
                     },
                     .int => {
-                        try output.writer(self.allocator).print("            record.{s} = try row.get(\"{s}\", i32);\n", .{ field.name, column_name });
+                        try output.writer(self.allocator).print("            record.{s} = try row.get(\"\\\"{s}\\\"\", i32);\n", .{ field.name, column_name });
                     },
                     .boolean => {
-                        try output.writer(self.allocator).print("            record.{s} = try row.get(\"{s}\", bool);\n", .{ field.name, column_name });
+                        try output.writer(self.allocator).print("            record.{s} = try row.get(\"\\\"{s}\\\"\", bool);\n", .{ field.name, column_name });
                     },
                     .datetime => {
-                        try output.writer(self.allocator).print("            record.{s} = try dt.unixTimeFromISO8601(try row.get(\"{s}\", []const u8));\n", .{ field.name, column_name });
+                        try output.writer(self.allocator).print("            record.{s} = try dt.unixTimeFromISO8601(try row.get(\"\\\"{s}\\\"\", []const u8));\n", .{ field.name, column_name });
                     },
                     else => {},
                 }
@@ -633,16 +633,16 @@ pub const Generator = struct {
                 // Optional field handling
                 switch (field.type) {
                     .string => {
-                        try output.writer(self.allocator).print("            records[idx].{s} = try row.getOpt(\"{s}\", []const u8);\n", .{ field.name, column_name });
+                        try output.writer(self.allocator).print("            records[idx].{s} = try row.getOpt(\"\\\"{s}\\\"\", []const u8);\n", .{ field.name, column_name });
                     },
                     .int => {
-                        try output.writer(self.allocator).print("            records[idx].{s} = try row.getOpt(\"{s}\", i32);\n", .{ field.name, column_name });
+                        try output.writer(self.allocator).print("            records[idx].{s} = try row.getOpt(\"\\\"{s}\\\"\", i32);\n", .{ field.name, column_name });
                     },
                     .boolean => {
-                        try output.writer(self.allocator).print("            records[idx].{s} = try row.getOpt(\"{s}\", bool);\n", .{ field.name, column_name });
+                        try output.writer(self.allocator).print("            records[idx].{s} = try row.getOpt(\"\\\"{s}\\\"\", bool);\n", .{ field.name, column_name });
                     },
                     .datetime => {
-                        try output.writer(self.allocator).print("            const {s}_str = try row.getOpt(\"{s}\", []const u8);\n", .{ field.name, column_name });
+                        try output.writer(self.allocator).print("            const {s}_str = try row.getOpt(\"\\\"{s}\\\"\", []const u8);\n", .{ field.name, column_name });
                         try output.writer(self.allocator).print("            records[idx].{s} = if ({s}_str) |str| try dt.unixTimeFromISO8601(str) else null;\n", .{ field.name, field.name });
                     },
                     else => {},
@@ -651,16 +651,16 @@ pub const Generator = struct {
                 // Non-optional field handling
                 switch (field.type) {
                     .string => {
-                        try output.writer(self.allocator).print("            records[idx].{s} = try row.get(\"{s}\", []const u8);\n", .{ field.name, column_name });
+                        try output.writer(self.allocator).print("            records[idx].{s} = try row.get(\"\\\"{s}\\\"\", []const u8);\n", .{ field.name, column_name });
                     },
                     .int => {
-                        try output.writer(self.allocator).print("            records[idx].{s} = try row.get(\"{s}\", i32);\n", .{ field.name, column_name });
+                        try output.writer(self.allocator).print("            records[idx].{s} = try row.get(\"\\\"{s}\\\"\", i32);\n", .{ field.name, column_name });
                     },
                     .boolean => {
-                        try output.writer(self.allocator).print("            records[idx].{s} = try row.get(\"{s}\", bool);\n", .{ field.name, column_name });
+                        try output.writer(self.allocator).print("            records[idx].{s} = try row.get(\"\\\"{s}\\\"\", bool);\n", .{ field.name, column_name });
                     },
                     .datetime => {
-                        try output.writer(self.allocator).print("            records[idx].{s} = try dt.unixTimeFromISO8601( try row.get(\"{s}\", []const u8) );\n", .{ field.name, column_name });
+                        try output.writer(self.allocator).print("            records[idx].{s} = try dt.unixTimeFromISO8601( try row.get(\"\\\"{s}\\\"\", []const u8) );\n", .{ field.name, column_name });
                     },
                     else => {},
                 }
@@ -766,16 +766,16 @@ pub const Generator = struct {
             if (field.optional) {
                 switch (field.type) {
                     .string => {
-                        try output.writer(self.allocator).print("            record.{s} = try row.getOpt(\"{s}\", []const u8);\n", .{ field.name, column_name });
+                        try output.writer(self.allocator).print("            record.{s} = try row.getOpt(\"\\\"{s}\\\"\", []const u8);\n", .{ field.name, column_name });
                     },
                     .int => {
-                        try output.writer(self.allocator).print("            record.{s} = try row.getOpt(\"{s}\", i32);\n", .{ field.name, column_name });
+                        try output.writer(self.allocator).print("            record.{s} = try row.getOpt(\"\\\"{s}\\\"\", i32);\n", .{ field.name, column_name });
                     },
                     .boolean => {
-                        try output.writer(self.allocator).print("            record.{s} = try row.getOpt(\"{s}\", bool);\n", .{ field.name, column_name });
+                        try output.writer(self.allocator).print("            record.{s} = try row.getOpt(\"\\\"{s}\\\"\", bool);\n", .{ field.name, column_name });
                     },
                     .datetime => {
-                        try output.writer(self.allocator).print("            const {s}_str = try row.getOpt(\"{s}\", []const u8);\n", .{ field.name, column_name });
+                        try output.writer(self.allocator).print("            const {s}_str = try row.getOpt(\"\\\"{s}\\\"\", []const u8);\n", .{ field.name, column_name });
                         try output.writer(self.allocator).print("            record.{s} = if ({s}_str) |str| try dt.unixTimeFromISO8601(str) else null;\n", .{ field.name, field.name });
                     },
                     else => {},
@@ -783,16 +783,16 @@ pub const Generator = struct {
             } else {
                 switch (field.type) {
                     .string => {
-                        try output.writer(self.allocator).print("            record.{s} = try row.get(\"{s}\", []const u8);\n", .{ field.name, column_name });
+                        try output.writer(self.allocator).print("            record.{s} = try row.get(\"\\\"{s}\\\"\", []const u8);\n", .{ field.name, column_name });
                     },
                     .int => {
-                        try output.writer(self.allocator).print("            record.{s} = try row.get(\"{s}\", i32);\n", .{ field.name, column_name });
+                        try output.writer(self.allocator).print("            record.{s} = try row.get(\"\\\"{s}\\\"\", i32);\n", .{ field.name, column_name });
                     },
                     .boolean => {
-                        try output.writer(self.allocator).print("            record.{s} = try row.get(\"{s}\", bool);\n", .{ field.name, column_name });
+                        try output.writer(self.allocator).print("            record.{s} = try row.get(\"\\\"{s}\\\"\", bool);\n", .{ field.name, column_name });
                     },
                     .datetime => {
-                        try output.writer(self.allocator).print("            record.{s} = try dt.unixTimeFromISO8601(try row.get(\"{s}\", []const u8));\n", .{ field.name, column_name });
+                        try output.writer(self.allocator).print("            record.{s} = try dt.unixTimeFromISO8601(try row.get(\"\\\"{s}\\\"\", []const u8));\n", .{ field.name, column_name });
                     },
                     else => {},
                 }
@@ -1173,4 +1173,175 @@ test "column array does not contain pre-quoted names" {
 
     // Instead it should have unquoted names
     try std.testing.expect(std.mem.indexOf(u8, generated_code, "const columns = [_][]const u8{\"id\", \"productName\"}") != null);
+}
+
+test "row.get uses quoted column names" {
+    const allocator = std.testing.allocator;
+
+    var schema = Schema.init(allocator);
+    defer schema.deinit();
+
+    var model = try PrismaModel.init(allocator, "Employee");
+
+    var id_field = try Field.init(allocator, "id", .string);
+    try id_field.attributes.append(allocator, .id);
+    try model.addField(id_field);
+
+    const first_name_field = try Field.init(allocator, "firstName", .string);
+    try model.addField(first_name_field);
+
+    const restaurant_id_field = try Field.init(allocator, "restaurantId", .string);
+    try model.addField(restaurant_id_field);
+
+    try schema.addModel(model);
+
+    var generator = Generator.init(allocator, &schema);
+    defer generator.deinit();
+    const generated_code = try generator.generateClient();
+    defer allocator.free(generated_code);
+
+    // Verify row.get() calls use quoted column names for PostgreSQL case-sensitivity
+    // The generated code should contain patterns like: row.get("\"firstName\"", []const u8)
+    try std.testing.expect(std.mem.indexOf(u8, generated_code, "row.get(\"\\\"id\\\"\", []const u8)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, generated_code, "row.get(\"\\\"firstName\\\"\", []const u8)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, generated_code, "row.get(\"\\\"restaurantId\\\"\", []const u8)") != null);
+}
+
+test "row.getOpt uses quoted column names" {
+    const allocator = std.testing.allocator;
+
+    var schema = Schema.init(allocator);
+    defer schema.deinit();
+
+    var model = try PrismaModel.init(allocator, "Customer");
+
+    var id_field = try Field.init(allocator, "id", .string);
+    try id_field.attributes.append(allocator, .id);
+    try model.addField(id_field);
+
+    var email_field = try Field.init(allocator, "email", .string);
+    email_field.optional = true;
+    try model.addField(email_field);
+
+    var phone_number_field = try Field.init(allocator, "phoneNumber", .string);
+    phone_number_field.optional = true;
+    try model.addField(phone_number_field);
+
+    try schema.addModel(model);
+
+    var generator = Generator.init(allocator, &schema);
+    defer generator.deinit();
+    const generated_code = try generator.generateClient();
+    defer allocator.free(generated_code);
+
+    // Verify row.getOpt() calls use quoted column names for optional fields
+    // The generated code should contain patterns like: row.getOpt("\"email\"", []const u8)
+    try std.testing.expect(std.mem.indexOf(u8, generated_code, "row.getOpt(\"\\\"email\\\"\", []const u8)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, generated_code, "row.getOpt(\"\\\"phoneNumber\\\"\", []const u8)") != null);
+}
+
+test "compile-time quoted_cols array optimization" {
+    const allocator = std.testing.allocator;
+
+    var schema = Schema.init(allocator);
+    defer schema.deinit();
+
+    var model = try PrismaModel.init(allocator, "Account");
+
+    var id_field = try Field.init(allocator, "id", .string);
+    try id_field.attributes.append(allocator, .id);
+    try model.addField(id_field);
+
+    const account_number_field = try Field.init(allocator, "accountNumber", .string);
+    try model.addField(account_number_field);
+
+    const balance_field = try Field.init(allocator, "balance", .float);
+    try model.addField(balance_field);
+
+    try schema.addModel(model);
+
+    var generator = Generator.init(allocator, &schema);
+    defer generator.deinit();
+    const generated_code = try generator.generateClient();
+    defer allocator.free(generated_code);
+
+    // Verify compile-time const array (no heap allocation for quoting)
+    try std.testing.expect(std.mem.indexOf(u8, generated_code, "const quoted_cols = [_][]const u8{") != null);
+
+    // Should NOT have runtime heap allocation for quoted_cols
+    try std.testing.expect(std.mem.indexOf(u8, generated_code, "var quoted_cols = try allocator.alloc") == null);
+
+    // Should NOT have runtime loop to quote columns
+    try std.testing.expect(std.mem.indexOf(u8, generated_code, "for (columns, 0..) |col, i|") == null);
+
+    // Verify pre-quoted column names in the const array
+    try std.testing.expect(std.mem.indexOf(u8, generated_code, "\\\"accountNumber\\\"") != null);
+}
+
+test "findMany uses quoted column names in row.get" {
+    const allocator = std.testing.allocator;
+
+    var schema = Schema.init(allocator);
+    defer schema.deinit();
+
+    var model = try PrismaModel.init(allocator, "Department");
+
+    var id_field = try Field.init(allocator, "id", .string);
+    try id_field.attributes.append(allocator, .id);
+    try model.addField(id_field);
+
+    const dept_name_field = try Field.init(allocator, "deptName", .string);
+    try model.addField(dept_name_field);
+
+    const manager_id_field = try Field.init(allocator, "managerId", .string);
+    try model.addField(manager_id_field);
+
+    try schema.addModel(model);
+
+    var generator = Generator.init(allocator, &schema);
+    defer generator.deinit();
+    const generated_code = try generator.generateClient();
+    defer allocator.free(generated_code);
+
+    // Verify findMany function exists
+    try std.testing.expect(std.mem.indexOf(u8, generated_code, "pub fn findMany") != null);
+
+    // Verify it uses quoted column names when populating records array
+    // The generated code should contain patterns like: records[idx].deptName = try row.get("\"deptName\"", ...)
+    try std.testing.expect(std.mem.indexOf(u8, generated_code, "records[idx].deptName = try row.get(\"\\\"deptName\\\"\",") != null or
+        std.mem.indexOf(u8, generated_code, "records[idx].managerId = try row.get(\"\\\"managerId\\\"\",") != null);
+}
+
+test "findUnique uses quoted column names in row.get" {
+    const allocator = std.testing.allocator;
+
+    var schema = Schema.init(allocator);
+    defer schema.deinit();
+
+    var model = try PrismaModel.init(allocator, "Position");
+
+    var id_field = try Field.init(allocator, "id", .string);
+    try id_field.attributes.append(allocator, .id);
+    try model.addField(id_field);
+
+    const title_field = try Field.init(allocator, "title", .string);
+    try model.addField(title_field);
+
+    const salary_range_field = try Field.init(allocator, "salaryRange", .string);
+    try model.addField(salary_range_field);
+
+    try schema.addModel(model);
+
+    var generator = Generator.init(allocator, &schema);
+    defer generator.deinit();
+    const generated_code = try generator.generateClient();
+    defer allocator.free(generated_code);
+
+    // Verify findUnique function exists
+    try std.testing.expect(std.mem.indexOf(u8, generated_code, "pub fn findUnique") != null);
+
+    // Verify it uses quoted column names when retrieving single record
+    // The generated code should contain patterns like: record.salaryRange = try row.get("\"salaryRange\"", ...)
+    try std.testing.expect(std.mem.indexOf(u8, generated_code, "record.salaryRange = try row.get(\"\\\"salaryRange\\\"\",") != null or
+        std.mem.indexOf(u8, generated_code, "record.title = try row.get(\"\\\"title\\\"\",") != null);
 }
