@@ -812,7 +812,7 @@ pub const Generator = struct {
         defer if (table_name.heap_allocated) self.allocator.free(table_name.value);
 
         try output.writer(self.allocator).print("    /// Update a {s} record\n", .{model.name});
-        try output.writer(self.allocator).print("    pub fn update(self: *@This(), options: struct {{ where: {s}Where, data: {s}UpdateData }}) !void {{\n", .{ model.name, model.name });
+        try output.writer(self.allocator).print("    pub fn update(self: *@This(), options: struct {{ where: {s}Where, data: {s}UpdateData }}) !ResultSet {{\n", .{ model.name, model.name });
 
         try output.appendSlice(self.allocator, "        var query_builder = QueryBuilder.init(self.allocator);\n");
         try output.appendSlice(self.allocator, "        defer query_builder.deinit();\n");
@@ -926,7 +926,7 @@ pub const Generator = struct {
         }
 
         try output.appendSlice(self.allocator, "\n        const query = query_builder.build();\n");
-        try output.appendSlice(self.allocator, "        _ = try self.connection.execSafe(query);\n");
+        try output.appendSlice(self.allocator, "        return try self.connection.execSafe(query);\n");
         try output.appendSlice(self.allocator, "    }\n\n");
     }
 
@@ -1344,4 +1344,37 @@ test "findUnique uses quoted column names in row.get" {
     // The generated code should contain patterns like: record.salaryRange = try row.get("\"salaryRange\"", ...)
     try std.testing.expect(std.mem.indexOf(u8, generated_code, "record.salaryRange = try row.get(\"\\\"salaryRange\\\"\",") != null or
         std.mem.indexOf(u8, generated_code, "record.title = try row.get(\"\\\"title\\\"\",") != null);
+}
+
+test "update returns ResultSet" {
+    const allocator = std.testing.allocator;
+
+    var schema = Schema.init(allocator);
+    defer schema.deinit();
+
+    var model = try PrismaModel.init(allocator, "Product");
+
+    var id_field = try Field.init(allocator, "id", .string);
+    try id_field.attributes.append(allocator, .id);
+    try model.addField(id_field);
+
+    const name_field = try Field.init(allocator, "name", .string);
+    try model.addField(name_field);
+
+    const price_field = try Field.init(allocator, "price", .float);
+    try model.addField(price_field);
+
+    try schema.addModel(model);
+
+    var generator = Generator.init(allocator, &schema);
+    defer generator.deinit();
+    const generated_code = try generator.generateClient();
+    defer allocator.free(generated_code);
+
+    // Verify update function exists with ResultSet return type
+    try std.testing.expect(std.mem.indexOf(u8, generated_code, "pub fn update") != null);
+    try std.testing.expect(std.mem.indexOf(u8, generated_code, "!ResultSet {") != null);
+
+    // Verify it returns the result instead of discarding it
+    try std.testing.expect(std.mem.indexOf(u8, generated_code, "return try self.connection.execSafe(query);") != null);
 }
