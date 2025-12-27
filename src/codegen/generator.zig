@@ -501,9 +501,24 @@ pub const Generator = struct {
         try output.writer(self.allocator).print("    /// Create a new {s} record\n", .{model.name});
         try output.writer(self.allocator).print("    pub fn create(self: *@This(), data: {s}) !{s} {{\n", .{ model.name, model.name });
 
-        // Build INSERT query with pre-quoted column names
+        // Build INSERT query - columns array with unquoted names for toSqlValues
         try output.writer(self.allocator).print("        const columns = [_][]const u8{{", .{});
         var first = true;
+        for (model.fields.items) |*field| {
+            if (field.isPrimaryKey() and field.getDefaultValue() != null) continue;
+            if (field.type.isRelation()) continue; // Skip relationship fields
+            if (!first) try output.appendSlice(self.allocator, ", ");
+            first = false;
+            try output.writer(self.allocator).print("\"{s}\"", .{field.getColumnName()});
+        }
+        try output.appendSlice(self.allocator, "};\n");
+
+        try output.appendSlice(self.allocator, "        const values = try data.toSqlValues(self.allocator, &columns);\n");
+        try output.appendSlice(self.allocator, "        defer self.allocator.free(values);\n");
+
+        // Build quoted column list at compile time - no heap allocation needed
+        try output.writer(self.allocator).print("        const quoted_cols = [_][]const u8{{", .{});
+        first = true;
         for (model.fields.items) |*field| {
             if (field.isPrimaryKey() and field.getDefaultValue() != null) continue;
             if (field.type.isRelation()) continue; // Skip relationship fields
@@ -512,10 +527,7 @@ pub const Generator = struct {
             try output.writer(self.allocator).print("\"\\\"{s}\\\"\"", .{field.getColumnName()});
         }
         try output.appendSlice(self.allocator, "};\n");
-
-        try output.appendSlice(self.allocator, "        const values = try data.toSqlValues(self.allocator, &columns);\n");
-        try output.appendSlice(self.allocator, "        defer self.allocator.free(values);\n");
-        try output.appendSlice(self.allocator, "        const columns_joined = try std.mem.join(self.allocator, \", \", &columns);\n");
+        try output.appendSlice(self.allocator, "        const columns_joined = try std.mem.join(self.allocator, \", \", &quoted_cols);\n");
         try output.appendSlice(self.allocator, "        defer self.allocator.free(columns_joined);\n");
 
         try output.writer(self.allocator).print("        const query = try std.fmt.allocPrint(self.allocator, \n", .{});
@@ -1024,4 +1036,141 @@ test "generate simple model struct" {
     try std.testing.expect(std.mem.indexOf(u8, generated_code, "pub const User = struct") != null);
     try std.testing.expect(std.mem.indexOf(u8, generated_code, "id: i32") != null);
     try std.testing.expect(std.mem.indexOf(u8, generated_code, "name: []const u8") != null);
+}
+
+test "column name casing in toSqlValues" {
+    const allocator = std.testing.allocator;
+
+    var schema = Schema.init(allocator);
+    defer schema.deinit();
+
+    var model = try PrismaModel.init(allocator, "TestModel");
+
+    // Add fields with various casing patterns
+    var id_field = try Field.init(allocator, "id", .int);
+    try id_field.attributes.append(allocator, .id);
+    try model.addField(id_field);
+
+    const camel_case_field = try Field.init(allocator, "firstName", .string);
+    try model.addField(camel_case_field);
+
+    const another_camel_field = try Field.init(allocator, "createdAt", .datetime);
+    try model.addField(another_camel_field);
+
+    try schema.addModel(model);
+
+    var generator = Generator.init(allocator, &schema);
+    defer generator.deinit();
+    const generated_code = try generator.generateClient();
+    defer allocator.free(generated_code);
+
+    // Verify toSqlValues uses unquoted column names for comparison
+    try std.testing.expect(std.mem.indexOf(u8, generated_code, "hasColumn(columns, \"firstName\")") != null);
+    try std.testing.expect(std.mem.indexOf(u8, generated_code, "hasColumn(columns, \"createdAt\")") != null);
+
+    // Verify the columns array is created with unquoted names
+    try std.testing.expect(std.mem.indexOf(u8, generated_code, "const columns = [_][]const u8{\"id\", \"firstName\", \"createdAt\"}") != null);
+}
+
+test "column name quoting in INSERT statement" {
+    const allocator = std.testing.allocator;
+
+    var schema = Schema.init(allocator);
+    defer schema.deinit();
+
+    var model = try PrismaModel.init(allocator, "Restaurant");
+
+    var id_field = try Field.init(allocator, "id", .string);
+    try id_field.attributes.append(allocator, .id);
+    try model.addField(id_field);
+
+    // This field name needs case-sensitive quoting in PostgreSQL
+    const owner_id_field = try Field.init(allocator, "ownerId", .string);
+    try model.addField(owner_id_field);
+
+    const is_active_field = try Field.init(allocator, "isActive", .boolean);
+    try model.addField(is_active_field);
+
+    try schema.addModel(model);
+
+    var generator = Generator.init(allocator, &schema);
+    defer generator.deinit();
+    const generated_code = try generator.generateClient();
+    defer allocator.free(generated_code);
+
+    // Verify quoted columns are generated at compile time (no runtime heap allocation)
+    try std.testing.expect(std.mem.indexOf(u8, generated_code, "const quoted_cols = [_][]const u8{") != null);
+    try std.testing.expect(std.mem.indexOf(u8, generated_code, "\\\"id\\\"") != null);
+
+    // Verify INSERT uses quoted table name (with escaped quotes in generated code)
+    try std.testing.expect(std.mem.indexOf(u8, generated_code, "INSERT INTO \\\"restaurant\\\"") != null);
+}
+
+test "toSqlValues with mixed case columns" {
+    const allocator = std.testing.allocator;
+
+    var schema = Schema.init(allocator);
+    defer schema.deinit();
+
+    var model = try PrismaModel.init(allocator, "Order");
+
+    var id_field = try Field.init(allocator, "id", .string);
+    try id_field.attributes.append(allocator, .id);
+    try model.addField(id_field);
+
+    const customer_id_field = try Field.init(allocator, "customerId", .string);
+    try model.addField(customer_id_field);
+
+    const total_amount_field = try Field.init(allocator, "totalAmount", .float);
+    try model.addField(total_amount_field);
+
+    const payment_method_field = try Field.init(allocator, "paymentMethod", .string);
+    try model.addField(payment_method_field);
+
+    try schema.addModel(model);
+
+    var generator = Generator.init(allocator, &schema);
+    defer generator.deinit();
+    const generated_code = try generator.generateClient();
+    defer allocator.free(generated_code);
+
+    // Verify each camelCase field is checked with unquoted name in toSqlValues
+    try std.testing.expect(std.mem.indexOf(u8, generated_code, "hasColumn(columns, \"customerId\")") != null);
+    try std.testing.expect(std.mem.indexOf(u8, generated_code, "hasColumn(columns, \"totalAmount\")") != null);
+    try std.testing.expect(std.mem.indexOf(u8, generated_code, "hasColumn(columns, \"paymentMethod\")") != null);
+
+    // Verify unquoted names are in the columns array
+    try std.testing.expect(std.mem.indexOf(u8, generated_code, "\"customerId\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, generated_code, "\"totalAmount\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, generated_code, "\"paymentMethod\"") != null);
+}
+
+test "column array does not contain pre-quoted names" {
+    const allocator = std.testing.allocator;
+
+    var schema = Schema.init(allocator);
+    defer schema.deinit();
+
+    var model = try PrismaModel.init(allocator, "Product");
+
+    var id_field = try Field.init(allocator, "id", .string);
+    try id_field.attributes.append(allocator, .id);
+    try model.addField(id_field);
+
+    const product_name_field = try Field.init(allocator, "productName", .string);
+    try model.addField(product_name_field);
+
+    try schema.addModel(model);
+
+    var generator = Generator.init(allocator, &schema);
+    defer generator.deinit();
+    const generated_code = try generator.generateClient();
+    defer allocator.free(generated_code);
+
+    // Ensure the columns array does NOT contain pre-quoted names like "\"productName\""
+    // This would break toSqlValues comparison
+    try std.testing.expect(std.mem.indexOf(u8, generated_code, "const columns = [_][]const u8{\"\\\"id\\\"\", \"\\\"productName\\\"\"}") == null);
+
+    // Instead it should have unquoted names
+    try std.testing.expect(std.mem.indexOf(u8, generated_code, "const columns = [_][]const u8{\"id\", \"productName\"}") != null);
 }
