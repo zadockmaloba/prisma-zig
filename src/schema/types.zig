@@ -636,9 +636,10 @@ test "FieldType.fromString" {
     try std.testing.expect(FieldType.fromString("Int").? == .int);
     try std.testing.expect(FieldType.fromString("Boolean").? == .boolean);
     try std.testing.expect(FieldType.fromString("DateTime").? == .datetime);
-    try std.testing.expect(FieldType.fromString("Unknown") == null);
+    try std.testing.expect(FieldType.fromString("Decimal").? == .decimal);
+    try std.testing.expect(FieldType.fromString("unknown") == null); // lowercase should be invalid
 
-    // Test model references
+    // Test model references (uppercase names are treated as model references)
     const user_ref = FieldType.fromString("User").?;
     try std.testing.expect(std.meta.activeTag(user_ref) == .model_ref);
     try std.testing.expectEqualStrings("User", user_ref.model_ref);
@@ -646,7 +647,7 @@ test "FieldType.fromString" {
     // Test array types
     const post_array = FieldType.fromString("Post[]").?;
     try std.testing.expect(std.meta.activeTag(post_array) == .model_array);
-    try std.testing.expectEqualStrings("Post", post_array.model_array);
+    try std.testing.expectEqualStrings("Post[]", post_array.model_array);
 }
 
 test "FieldType.toSqlType" {

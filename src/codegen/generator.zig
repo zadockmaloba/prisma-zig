@@ -501,7 +501,7 @@ pub const Generator = struct {
         try output.writer(self.allocator).print("    /// Create a new {s} record\n", .{model.name});
         try output.writer(self.allocator).print("    pub fn create(self: *@This(), data: {s}) !{s} {{\n", .{ model.name, model.name });
 
-        // Build INSERT query
+        // Build INSERT query with pre-quoted column names
         try output.writer(self.allocator).print("        const columns = [_][]const u8{{", .{});
         var first = true;
         for (model.fields.items) |*field| {
@@ -509,20 +509,18 @@ pub const Generator = struct {
             if (field.type.isRelation()) continue; // Skip relationship fields
             if (!first) try output.appendSlice(self.allocator, ", ");
             first = false;
-            try output.writer(self.allocator).print("\"{s}\"", .{field.getColumnName()});
+            try output.writer(self.allocator).print("\"\\\"{s}\\\"\"", .{field.getColumnName()});
         }
         try output.appendSlice(self.allocator, "};\n");
 
         try output.appendSlice(self.allocator, "        const values = try data.toSqlValues(self.allocator, &columns);\n");
         try output.appendSlice(self.allocator, "        defer self.allocator.free(values);\n");
-
-        try output.appendSlice(self.allocator, "        const key_list = std.mem.join(self.allocator, \", \", &columns) catch \"\";\n");
-        try output.appendSlice(self.allocator, "        defer self.allocator.free(key_list);\n");
-        try output.appendSlice(self.allocator, "        const val_list = values;\n");
+        try output.appendSlice(self.allocator, "        const columns_joined = try std.mem.join(self.allocator, \", \", &columns);\n");
+        try output.appendSlice(self.allocator, "        defer self.allocator.free(columns_joined);\n");
 
         try output.writer(self.allocator).print("        const query = try std.fmt.allocPrint(self.allocator, \n", .{});
         try output.writer(self.allocator).print("            \"INSERT INTO \\\"{s}\\\" ({{s}}) VALUES ({{s}}) RETURNING *;\",\n", .{table_name.value});
-        try output.appendSlice(self.allocator, "            .{ key_list, val_list }\n");
+        try output.appendSlice(self.allocator, "            .{ columns_joined, values }\n");
         try output.appendSlice(self.allocator, "        );\n");
         try output.appendSlice(self.allocator, "        defer self.allocator.free(query);\n");
 
