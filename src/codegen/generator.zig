@@ -812,7 +812,7 @@ pub const Generator = struct {
         defer if (table_name.heap_allocated) self.allocator.free(table_name.value);
 
         try output.writer(self.allocator).print("    /// Update a {s} record\n", .{model.name});
-        try output.writer(self.allocator).print("    pub fn update(self: *@This(), options: struct {{ where: {s}Where, data: {s}UpdateData }}) !ResultSet {{\n", .{ model.name, model.name });
+        try output.writer(self.allocator).print("    pub fn update(self: *@This(), options: struct {{ where: {s}Where, data: {s}UpdateData }}) !?{s} {{\n", .{ model.name, model.name, model.name });
 
         try output.appendSlice(self.allocator, "        var query_builder = QueryBuilder.init(self.allocator);\n");
         try output.appendSlice(self.allocator, "        defer query_builder.deinit();\n");
@@ -925,8 +925,66 @@ pub const Generator = struct {
             _ = filter_prefix;
         }
 
-        try output.appendSlice(self.allocator, "\n        const query = query_builder.build();\n");
-        try output.appendSlice(self.allocator, "        return try self.connection.execSafe(query);\n");
+        try output.appendSlice(self.allocator, "\n        _ = try query_builder.sql(\" RETURNING *\");\n");
+        try output.appendSlice(self.allocator, "        const query = query_builder.build();\n");
+        try output.appendSlice(self.allocator, "        var result = try self.connection.execSafe(query);\n");
+        try output.appendSlice(self.allocator, "        \n");
+        try output.appendSlice(self.allocator, "        if (result.rowCount() == 0) {\n");
+        try output.appendSlice(self.allocator, "            return null;\n");
+        try output.appendSlice(self.allocator, "        }\n");
+        try output.appendSlice(self.allocator, "        \n");
+        try output.appendSlice(self.allocator, "        if (result.next()) |row| {\n");
+        try output.appendSlice(self.allocator, "            var record: ");
+        try output.writer(self.allocator).print("{s} = undefined;\n", .{model.name});
+
+        // Generate field parsing for the returned record (same as CREATE operation)
+        for (model.fields.items) |*field| {
+            if (field.type.isRelation()) continue;
+
+            const column_name = field.getColumnName();
+
+            if (field.optional) {
+                // Optional field handling
+                switch (field.type) {
+                    .string => {
+                        try output.writer(self.allocator).print("            record.{s} = try row.getOpt(\"\\\"{s}\\\"\", []const u8);\n", .{ field.name, column_name });
+                    },
+                    .int => {
+                        try output.writer(self.allocator).print("            record.{s} = try row.getOpt(\"\\\"{s}\\\"\", i32);\n", .{ field.name, column_name });
+                    },
+                    .boolean => {
+                        try output.writer(self.allocator).print("            record.{s} = try row.getOpt(\"\\\"{s}\\\"\", bool);\n", .{ field.name, column_name });
+                    },
+                    .datetime => {
+                        try output.writer(self.allocator).print("            const {s}_str = try row.getOpt(\"\\\"{s}\\\"\", []const u8);\n", .{ field.name, column_name });
+                        try output.writer(self.allocator).print("            record.{s} = if ({s}_str) |str| try dt.unixTimeFromISO8601(str) else null;\n", .{ field.name, field.name });
+                    },
+                    else => {},
+                }
+            } else {
+                // Non-optional field handling
+                switch (field.type) {
+                    .string => {
+                        try output.writer(self.allocator).print("            record.{s} = try row.get(\"\\\"{s}\\\"\", []const u8);\n", .{ field.name, column_name });
+                    },
+                    .int => {
+                        try output.writer(self.allocator).print("            record.{s} = try row.get(\"\\\"{s}\\\"\", i32);\n", .{ field.name, column_name });
+                    },
+                    .boolean => {
+                        try output.writer(self.allocator).print("            record.{s} = try row.get(\"\\\"{s}\\\"\", bool);\n", .{ field.name, column_name });
+                    },
+                    .datetime => {
+                        try output.writer(self.allocator).print("            record.{s} = try dt.unixTimeFromISO8601(try row.get(\"\\\"{s}\\\"\", []const u8));\n", .{ field.name, column_name });
+                    },
+                    else => {},
+                }
+            }
+        }
+
+        try output.appendSlice(self.allocator, "            return record;\n");
+        try output.appendSlice(self.allocator, "        }\n");
+        try output.appendSlice(self.allocator, "        \n");
+        try output.appendSlice(self.allocator, "        return null;\n");
         try output.appendSlice(self.allocator, "    }\n\n");
     }
 
@@ -1371,10 +1429,13 @@ test "update returns ResultSet" {
     const generated_code = try generator.generateClient();
     defer allocator.free(generated_code);
 
-    // Verify update function exists with ResultSet return type
+    // Verify update function exists with optional model return type
     try std.testing.expect(std.mem.indexOf(u8, generated_code, "pub fn update") != null);
-    try std.testing.expect(std.mem.indexOf(u8, generated_code, "!ResultSet {") != null);
+    try std.testing.expect(std.mem.indexOf(u8, generated_code, "!?Product {") != null);
 
-    // Verify it returns the result instead of discarding it
-    try std.testing.expect(std.mem.indexOf(u8, generated_code, "return try self.connection.execSafe(query);") != null);
+    // Verify it uses RETURNING * clause
+    try std.testing.expect(std.mem.indexOf(u8, generated_code, "RETURNING *") != null);
+
+    // Verify it parses and returns the result
+    try std.testing.expect(std.mem.indexOf(u8, generated_code, "return record;") != null);
 }
