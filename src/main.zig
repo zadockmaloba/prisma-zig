@@ -503,12 +503,15 @@ fn dbPush(allocator: std.mem.Allocator, args: [][:0]u8) !void {
     // Handle command line arguments for db push
     var accept_data_loss = false;
     var force_reset = false;
+    var verbose = false;
     var i: usize = 2; // Skip "prisma-zig" and "db-push"
     while (i < args.len) : (i += 1) {
         if (std.mem.eql(u8, args[i], "--accept-data-loss")) {
             accept_data_loss = true;
         } else if (std.mem.eql(u8, args[i], "--force-reset")) {
             force_reset = true;
+        } else if (std.mem.eql(u8, args[i], "--verbose")) {
+            verbose = true;
         }
     }
 
@@ -541,12 +544,12 @@ fn dbPush(allocator: std.mem.Allocator, args: [][:0]u8) !void {
     };
     _ = db_url;
 
-    std.debug.print("✓ Connecting to database...\n", .{});
+    if (verbose) std.debug.print("✓ Connecting to database...\n", .{});
 
     // TODO: Implement actual database connection and schema comparison
     // For now, we'll simulate the process
-    std.debug.print("✓ Database connection established\n", .{});
-    std.debug.print("✓ Comparing schema with database...\n", .{});
+    if (verbose) std.debug.print("✓ Database connection established\n", .{});
+    if (verbose) std.debug.print("✓ Comparing schema with database...\n", .{});
 
     // Simulate detecting changes
     const has_breaking_changes = false; // This would be determined by actual comparison
@@ -568,11 +571,11 @@ fn dbPush(allocator: std.mem.Allocator, args: [][:0]u8) !void {
     const push_sql = try generatePushSql(allocator, &schema);
     defer allocator.free(push_sql);
 
-    std.debug.print("✓ Generated SQL commands\n", .{});
-    std.debug.print("✓ Applying schema changes to database...\n", .{});
+    if (verbose) std.debug.print("✓ Generated SQL commands\n", .{});
+    if (verbose) std.debug.print("✓ Applying schema changes to database...\n", .{});
 
     // Debug: print the SQL being executed
-    std.debug.print("\n=== SQL TO EXECUTE ===\n{s}\n=== END SQL ===\n\n", .{push_sql});
+    if (verbose) std.debug.print("\n=== SQL TO EXECUTE ===\n{s}\n=== END SQL ===\n\n", .{push_sql});
 
     var conn = pq.Connection.init(allocator);
     defer conn.deinit();
@@ -585,17 +588,17 @@ fn dbPush(allocator: std.mem.Allocator, args: [][:0]u8) !void {
 
     // TODO: Execute the SQL commands
     // For now, we'll just show what would be executed
-    std.debug.print("  SQL to execute:\n", .{});
+    if (verbose) std.debug.print("  SQL to execute:\n", .{});
     var lines = std.mem.splitSequence(u8, push_sql, "\n");
-    while (lines.next()) |line| {
+    if (verbose) while (lines.next()) |line| {
         const trimmed = std.mem.trim(u8, line, " \t\r\n");
         if (trimmed.len > 0 and !std.mem.startsWith(u8, trimmed, "--")) {
             std.debug.print("    {s}\n", .{trimmed});
         }
-    }
+    };
 
     std.debug.print("✓ Schema pushed successfully\n", .{});
-    std.debug.print("✓ Database is now in sync with your schema\n", .{});
+    if (verbose) std.debug.print("✓ Database is now in sync with your schema\n", .{});
 
     std.debug.print("\nNext steps:\n", .{});
     std.debug.print("1. Run 'prisma-zig generate' to update your client\n", .{});
