@@ -349,9 +349,9 @@ Generates type-safe Zig client code from your schema.
 zig build prisma -- migrate-dev
 
 # Apply pending migrations
-zig build prisma -- migrate
+zig build prisma -- migrate-deploy
 
-# View migration status
+# View migration status [TODO]
 zig build prisma -- migrate-status
 ```
 
