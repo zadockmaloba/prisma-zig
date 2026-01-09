@@ -50,7 +50,7 @@ pub fn main() !void {
 
     // Demo: update - update a user's name
     std.debug.print("\n=== update Demo ===\n", .{});
-    try client.user.update(.{
+    _ = try client.user.update(.{
         .where = .{ .id = .{ .equals = 1 } },
         .data = .{
             .name = "Alice Wonderland",
