@@ -12,7 +12,7 @@ const generatePushSql = dbutil.generatePushSql;
 const Command = enum {
     init,
     generate,
-    migrate,
+    migrate_deploy,
     migrate_dev,
     db_pull,
     db_push,
@@ -25,7 +25,7 @@ const Command = enum {
     pub fn fromString(str: []const u8) ?Command {
         if (std.mem.eql(u8, str, "init")) return .init;
         if (std.mem.eql(u8, str, "generate")) return .generate;
-        if (std.mem.eql(u8, str, "migrate")) return .migrate;
+        if (std.mem.eql(u8, str, "migrate-deploy")) return .migrate_deploy;
         if (std.mem.eql(u8, str, "migrate-dev")) return .migrate_dev;
         if (std.mem.eql(u8, str, "db")) return .db_pull; // Default db command to pull
         if (std.mem.eql(u8, str, "db-pull")) return .db_pull;
@@ -39,20 +39,57 @@ const Command = enum {
     }
 };
 
-fn printUsage() void {
+fn getDatabaseUrl(allocator: std.mem.Allocator, schema: types.Schema) ![]u8 {
+    // First try environment variable
+    // Get database URL from schema datasource
+    const db_url = if (schema.datasource) |ds| ds.url else {
+        std.debug.print("✗ No datasource found in schema.prisma. Please add a datasource block.\n", .{});
+        return error.NoDatasource;
+    };
+    const parsed_url = if (std.mem.startsWith(u8, db_url, "env(")) blk: {
+        const start = std.mem.indexOf(u8, db_url, "(") orelse return error.InvalidDatabaseUrl;
+        const end = std.mem.indexOf(u8, db_url, ")") orelse return error.InvalidDatabaseUrl;
+        const env_var_name = db_url[start + 1 .. end];
+        const env_var_value = std.process.getEnvVarOwned(allocator, env_var_name) catch blk_2: {
+            std.debug.print("✗ Environment variable {s} not found - checking .env\n", .{env_var_name});
+            // Try reading from .env file
+            const env_content = std.fs.cwd().readFileAlloc(allocator, ".env", 1024) catch |err| switch (err) {
+                error.FileNotFound => return error.DatabaseUrlNotFound,
+                else => return err,
+            };
+            defer allocator.free(env_content);
+
+            // Parse .env file for DATABASE_URL
+            var lines = std.mem.splitSequence(u8, env_content, "\n");
+            while (lines.next()) |line| {
+                const trimmed = std.mem.trim(u8, line, " \t\r\n");
+                if (std.mem.startsWith(u8, trimmed, env_var_name) and trimmed.len > env_var_name.len + 1 and trimmed[env_var_name.len] == '=') {
+                    const url_part = trimmed[13..]; // Skip "DATABASE_URL="
+                    const url = std.mem.trim(u8, url_part, "\"'"); // Remove quotes if present
+                    break :blk_2 try allocator.dupe(u8, url);
+                }
+            }
+            return error.DatabaseUrlNotFound;
+        };
+        break :blk env_var_value;
+    } else try allocator.dupe(u8, db_url);
+    return parsed_url;
+}
+
+fn printUsage(proc: []const u8) void {
     std.debug.print(
         \\
         \\  ◭  Prisma Zig is a modern DB toolkit to query, migrate and model your database
         \\
         \\  Usage
         \\
-        \\    $ prisma-zig [command]
+        \\    $ {[proc]s} [command]
         \\
         \\  Commands
         \\
         \\            init   Set up Prisma for your Zig app
         \\        generate   Generate Zig client code from Prisma schema
-        \\         migrate   Apply pending migrations to the database
+        \\  migrate-deploy   Apply pending migrations to the database
         \\     migrate-dev   Create and apply a new migration in development
         \\         db-pull   Pull database schema into Prisma schema
         \\         db-push   Push schema changes to database without migrations
@@ -68,34 +105,36 @@ fn printUsage() void {
         \\  Examples
         \\
         \\    Set up a new Prisma project
-        \\    $ prisma-zig init
+        \\    $ {[proc]s} init
         \\
         \\    Generate Zig client code
-        \\    $ prisma-zig generate
+        \\    $ {[proc]s} generate
         \\
         \\    Apply pending migrations
-        \\    $ prisma-zig migrate
+        \\    $ {[proc]s} migrate
         \\
         \\    Create and apply a new migration
-        \\    $ prisma-zig migrate-dev
+        \\    $ {[proc]s} migrate-dev
         \\
         \\    Pull existing database schema
-        \\    $ prisma-zig db-pull
+        \\    $ {[proc]s} db-pull
         \\
         \\    Push schema changes to database
-        \\    $ prisma-zig db-push
+        \\    $ {[proc]s} db-push
         \\
         \\    Validate your Prisma schema
-        \\    $ prisma-zig validate
+        \\    $ {[proc]s} validate
         \\
         \\    Format your Prisma schema
-        \\    $ prisma-zig format
+        \\    $ {[proc]s} format
         \\
         \\    Display version info
-        \\    $ prisma-zig version
+        \\    $ {[proc]s} version
         \\
         \\
-    , .{});
+    , .{
+        .proc = proc,
+    });
 }
 
 fn printVersion() void {
@@ -286,7 +325,7 @@ fn formatSchema(allocator: std.mem.Allocator) !void {
     std.debug.print("This feature will format your schema.prisma file with consistent styling.\n", .{});
 }
 
-fn migrate(allocator: std.mem.Allocator) !void {
+fn migrateDeploy(allocator: std.mem.Allocator) !void {
     std.debug.print("Applying pending migrations to the database...\n", .{});
 
     // Check if migrations directory exists
@@ -316,16 +355,18 @@ fn migrate(allocator: std.mem.Allocator) !void {
     };
     defer schema.deinit();
 
-    const db_url = if (schema.datasource) |ds| ds.url else {
-        std.debug.print("✗ No datasource found in schema.prisma. Please add a datasource block.\n", .{});
-        return;
-    };
-    _ = db_url;
+    const db_url = try getDatabaseUrl(allocator, schema);
+    defer allocator.free(db_url);
 
     std.debug.print("✓ Connecting to database...\n", .{});
 
-    // TODO: Implement actual migration logic
-    // For now, we'll simulate the process
+    var conn = pq.Connection.init(allocator);
+    defer conn.deinit();
+    conn.connect(db_url) catch |err| {
+        std.debug.print("Failed to connect to database: {}\n", .{err});
+        return err;
+    };
+
     std.debug.print("✓ Database connection established\n", .{});
     std.debug.print("✓ Checking migration status...\n", .{});
 
@@ -343,7 +384,18 @@ fn migrate(allocator: std.mem.Allocator) !void {
         if (entry.kind == .file and std.mem.endsWith(u8, entry.name, ".sql")) {
             migration_count += 1;
             std.debug.print("  → Applying migration: {s}\n", .{entry.name});
-            // TODO: Execute SQL migration file
+            const file_name =  try std.fmt.allocPrint(allocator, "migrations/{s}", .{entry.name});
+            defer allocator.free(file_name);
+
+            const data = std.fs.cwd().readFileAlloc(allocator, file_name, 1024 * 1024) catch |err| {
+                std.debug.print("✗ Failed to read migration file {s}: {}\n", .{entry.name, err});
+                return err;
+            };
+            defer allocator.free(data);
+            _ = conn.execSafe(data) catch |err| {
+                migration_count -= 1;
+                std.debug.print("✗ Failed to apply migration {s}: {}\n", .{entry.name, err});
+            };
         }
     }
 
@@ -382,11 +434,8 @@ fn migrateDev(allocator: std.mem.Allocator, args: [][:0]u8) !void {
     };
     defer schema.deinit();
 
-    const db_url = if (schema.datasource) |ds| ds.url else {
-        std.debug.print("✗ No datasource found in schema.prisma. Please add a datasource block.\n", .{});
-        return;
-    };
-    _ = db_url;
+    const db_url = try getDatabaseUrl(allocator, schema);
+    defer allocator.free(db_url);
 
     // Generate timestamp for migration file
     const timestamp = std.time.timestamp();
@@ -413,42 +462,23 @@ fn migrateDev(allocator: std.mem.Allocator, args: [][:0]u8) !void {
 
     std.debug.print("✓ Connecting to database...\n", .{});
 
+    var conn = pq.Connection.init(allocator);
+    defer conn.deinit();
+    conn.connect(db_url) catch |err| {
+        std.debug.print("Failed to connect to database: {}\n", .{err});
+        return err;
+    };
+
     // TODO: Implement actual database connection and migration execution
     // For now, we'll simulate the process
     std.debug.print("✓ Database connection established\n", .{});
     std.debug.print("✓ Applying migration...\n", .{});
+    _ = try conn.execSafe(migration_sql);
     std.debug.print("✓ Migration applied successfully\n", .{});
 
     std.debug.print("\nNext steps:\n", .{});
     std.debug.print("1. Review the generated migration file: {s}\n", .{migration_filename});
     std.debug.print("2. Run 'prisma-zig generate' to update your client\n", .{});
-}
-
-fn getDatabaseUrl(allocator: std.mem.Allocator) ![]u8 {
-    // First try environment variable
-    if (std.process.getEnvVarOwned(allocator, "DATABASE_URL")) |url| {
-        return url;
-    } else |_| {}
-
-    // Try reading from .env file
-    const env_content = std.fs.cwd().readFileAlloc(allocator, ".env", 1024) catch |err| switch (err) {
-        error.FileNotFound => return error.DatabaseUrlNotFound,
-        else => return err,
-    };
-    defer allocator.free(env_content);
-
-    // Parse .env file for DATABASE_URL
-    var lines = std.mem.splitSequence(u8, env_content, "\n");
-    while (lines.next()) |line| {
-        const trimmed = std.mem.trim(u8, line, " \t\r\n");
-        if (std.mem.startsWith(u8, trimmed, "DATABASE_URL=")) {
-            const url_part = trimmed[13..]; // Skip "DATABASE_URL="
-            const url = std.mem.trim(u8, url_part, "\"'"); // Remove quotes if present
-            return try allocator.dupe(u8, url);
-        }
-    }
-
-    return error.DatabaseUrlNotFound;
 }
 
 fn dbPull(allocator: std.mem.Allocator, args: [][:0]u8) !void {
@@ -538,11 +568,8 @@ fn dbPush(allocator: std.mem.Allocator, args: [][:0]u8) !void {
     std.debug.print("✓ Schema parsed successfully\n", .{});
 
     // Get database URL from schema datasource
-    const db_url = if (schema.datasource) |ds| ds.url else {
-        std.debug.print("✗ No datasource found in schema.prisma. Please add a datasource block.\n", .{});
-        return;
-    };
-    _ = db_url;
+    const db_url = try getDatabaseUrl(allocator, schema);
+    defer allocator.free(db_url);
 
     if (verbose) std.debug.print("✓ Connecting to database...\n", .{});
 
@@ -579,7 +606,7 @@ fn dbPush(allocator: std.mem.Allocator, args: [][:0]u8) !void {
 
     var conn = pq.Connection.init(allocator);
     defer conn.deinit();
-    conn.connect("postgresql://postgres:postgres@localhost:5432/postgres") catch |err| {
+    conn.connect(db_url) catch |err| {
         std.debug.print("Failed to connect to database: {}\n", .{err});
         return err;
     };
@@ -661,11 +688,6 @@ fn printDebugInfo(allocator: std.mem.Allocator) !void {
     std.debug.print("  Zig version: 0.15.1\n", .{});
 }
 
-fn getDbHost() []const u8 {
-    // Check for environment variable, default to localhost for local development
-    return std.process.getEnvVarOwned(std.heap.page_allocator, "DB_HOST") catch "localhost";
-}
-
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer if (gpa.deinit() != .ok) @panic("Memory leak detected");
@@ -677,7 +699,7 @@ pub fn main() !void {
 
     // If no arguments provided, show help
     if (args.len < 2) {
-        printUsage();
+        printUsage(args[0]);
         return;
     }
 
@@ -702,7 +724,7 @@ pub fn main() !void {
 
     const final_command = command orelse {
         std.debug.print("Unknown command: {s}\n", .{command_str});
-        printUsage();
+        printUsage(args[0]);
         return;
     };
 
@@ -710,7 +732,7 @@ pub fn main() !void {
     switch (final_command) {
         .init => try initProject(allocator),
         .generate => try generateClient(allocator),
-        .migrate => try migrate(allocator),
+        .migrate_deploy => try migrateDeploy(allocator),
         .migrate_dev => try migrateDev(allocator, args),
         .db_pull => try dbPull(allocator, args),
         .db_push => try dbPush(allocator, args),
@@ -718,7 +740,7 @@ pub fn main() !void {
         .format => try formatSchema(allocator),
         .version => printVersion(),
         .debug => try printDebugInfo(allocator),
-        .help => printUsage(),
+        .help => printUsage(args[0]),
     }
 }
 
