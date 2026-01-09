@@ -283,6 +283,24 @@ pub const DateTimeFilter = struct {
     gte: ?i64 = null,
 };
 
+/// Float filter options
+pub const FloatFilter = struct {
+    equals: ?f64 = null,
+    lt: ?f64 = null,
+    lte: ?f64 = null,
+    gt: ?f64 = null,
+    gte: ?f64 = null,
+};
+
+/// Decimal filter options
+pub const DecimalFilter = struct {
+    equals: ?f64 = null,
+    lt: ?f64 = null,
+    lte: ?f64 = null,
+    gt: ?f64 = null,
+    gte: ?f64 = null,
+};
+
 /// Main Prisma client
 pub const PrismaClient = struct {
     allocator: std.mem.Allocator,
@@ -335,23 +353,23 @@ pub const UserOperations = struct {
         const columns = [_][]const u8{"email", "name", "createdAt", "updatedAt"};
         const values = try data.toSqlValues(self.allocator, &columns);
         defer self.allocator.free(values);
-        const key_list = std.mem.join(self.allocator, ", ", &columns) catch "";
-        defer self.allocator.free(key_list);
-        const val_list = values;
+        const quoted_cols = [_][]const u8{"\"email\"", "\"name\"", "\"createdAt\"", "\"updatedAt\""};
+        const columns_joined = try std.mem.join(self.allocator, ", ", &quoted_cols);
+        defer self.allocator.free(columns_joined);
         const query = try std.fmt.allocPrint(self.allocator, 
             "INSERT INTO \"user\" ({s}) VALUES ({s}) RETURNING *;",
-            .{ key_list, val_list }
+            .{ columns_joined, values }
         );
         defer self.allocator.free(query);
         var result = try self.connection.execSafe(query);
         
         if (result.next()) |row| {
             var record: User = undefined;
-            record.id = try row.get("id", i32);
-            record.email = try row.get("email", []const u8);
-            record.name = try row.getOpt("name", []const u8);
-            record.createdAt = try dt.unixTimeFromISO8601(try row.get("createdAt", []const u8));
-            record.updatedAt = try dt.unixTimeFromISO8601(try row.get("updatedAt", []const u8));
+            record.id = try row.get("\"id\"", i32);
+            record.email = try row.get("\"email\"", []const u8);
+            record.name = try row.getOpt("\"name\"", []const u8);
+            record.createdAt = try dt.unixTimeFromISO8601(try row.get("\"createdAt\"", []const u8));
+            record.updatedAt = try dt.unixTimeFromISO8601(try row.get("\"updatedAt\"", []const u8));
             return record;
         }
         
@@ -376,11 +394,11 @@ pub const UserOperations = struct {
 
         var idx: usize = 0;
         while (result.next()) |row| : (idx += 1) {
-            records[idx].id = try row.get("id", i32);
-            records[idx].email = try row.get("email", []const u8);
-            records[idx].name = try row.getOpt("name", []const u8);
-            records[idx].createdAt = try dt.unixTimeFromISO8601( try row.get("createdAt", []const u8) );
-            records[idx].updatedAt = try dt.unixTimeFromISO8601( try row.get("updatedAt", []const u8) );
+            records[idx].id = try row.get("\"id\"", i32);
+            records[idx].email = try row.get("\"email\"", []const u8);
+            records[idx].name = try row.getOpt("\"name\"", []const u8);
+            records[idx].createdAt = try dt.unixTimeFromISO8601( try row.get("\"createdAt\"", []const u8) );
+            records[idx].updatedAt = try dt.unixTimeFromISO8601( try row.get("\"updatedAt\"", []const u8) );
         }
 
         return records;
@@ -402,7 +420,7 @@ pub const UserOperations = struct {
                 first_condition = false;
                 const val_str = try std.fmt.allocPrint(self.allocator, "{d}", .{value});
                 defer self.allocator.free(val_str);
-                _ = try query_builder.sql("id = ");
+                _ = try query_builder.sql("\"id\" = ");
                 _ = try query_builder.sql(val_str);
             }
         }
@@ -412,7 +430,7 @@ pub const UserOperations = struct {
                     _ = try query_builder.sql(" AND ");
                 }
                 first_condition = false;
-                _ = try query_builder.sql("email = '");
+                _ = try query_builder.sql("\"email\" = '");
                 _ = try query_builder.sql(value);
                 _ = try query_builder.sql("'");
             }
@@ -423,7 +441,7 @@ pub const UserOperations = struct {
                     _ = try query_builder.sql(" AND ");
                 }
                 first_condition = false;
-                _ = try query_builder.sql("name = '");
+                _ = try query_builder.sql("\"name\" = '");
                 _ = try query_builder.sql(value);
                 _ = try query_builder.sql("'");
             }
@@ -436,7 +454,7 @@ pub const UserOperations = struct {
                 first_condition = false;
                 const val_str = try std.fmt.allocPrint(self.allocator, "to_timestamp({d})", .{value});
                 defer self.allocator.free(val_str);
-                _ = try query_builder.sql("createdAt = ");
+                _ = try query_builder.sql("\"createdAt\" = ");
                 _ = try query_builder.sql(val_str);
             }
         }
@@ -448,7 +466,7 @@ pub const UserOperations = struct {
                 first_condition = false;
                 const val_str = try std.fmt.allocPrint(self.allocator, "to_timestamp({d})", .{value});
                 defer self.allocator.free(val_str);
-                _ = try query_builder.sql("updatedAt = ");
+                _ = try query_builder.sql("\"updatedAt\" = ");
                 _ = try query_builder.sql(val_str);
             }
         }
@@ -463,11 +481,11 @@ pub const UserOperations = struct {
 
         if (result.next()) |row| {
             var record: User = undefined;
-            record.id = try row.get("id", i32);
-            record.email = try row.get("email", []const u8);
-            record.name = try row.getOpt("name", []const u8);
-            record.createdAt = try dt.unixTimeFromISO8601(try row.get("createdAt", []const u8));
-            record.updatedAt = try dt.unixTimeFromISO8601(try row.get("updatedAt", []const u8));
+            record.id = try row.get("\"id\"", i32);
+            record.email = try row.get("\"email\"", []const u8);
+            record.name = try row.getOpt("\"name\"", []const u8);
+            record.createdAt = try dt.unixTimeFromISO8601(try row.get("\"createdAt\"", []const u8));
+            record.updatedAt = try dt.unixTimeFromISO8601(try row.get("\"updatedAt\"", []const u8));
             return record;
         }
 
@@ -475,7 +493,7 @@ pub const UserOperations = struct {
     }
 
     /// Update a User record
-    pub fn update(self: *@This(), options: struct { where: UserWhere, data: UserUpdateData }) !void {
+    pub fn update(self: *@This(), options: struct { where: UserWhere, data: UserUpdateData }) !?User {
         var query_builder = QueryBuilder.init(self.allocator);
         defer query_builder.deinit();
         _ = try query_builder.sql("UPDATE \"user\" SET ");
@@ -487,7 +505,7 @@ pub const UserOperations = struct {
                 _ = try query_builder.sql(", ");
             }
             first_field = false;
-            _ = try query_builder.sql("email = '");
+            _ = try query_builder.sql("\"email\" = '");
             _ = try query_builder.sql(value);
             _ = try query_builder.sql("'");
         }
@@ -496,7 +514,7 @@ pub const UserOperations = struct {
                 _ = try query_builder.sql(", ");
             }
             first_field = false;
-            _ = try query_builder.sql("name = '");
+            _ = try query_builder.sql("\"name\" = '");
             _ = try query_builder.sql(value);
             _ = try query_builder.sql("'");
         }
@@ -507,7 +525,7 @@ pub const UserOperations = struct {
             first_field = false;
             const val_str = try std.fmt.allocPrint(self.allocator, "{d}", .{value});
             defer self.allocator.free(val_str);
-            _ = try query_builder.sql("createdAt = to_timestamp(");
+            _ = try query_builder.sql("\"createdAt\" = to_timestamp(");
             _ = try query_builder.sql(val_str);
             _ = try query_builder.sql(")");
         }
@@ -518,7 +536,7 @@ pub const UserOperations = struct {
             first_field = false;
             const val_str = try std.fmt.allocPrint(self.allocator, "{d}", .{value});
             defer self.allocator.free(val_str);
-            _ = try query_builder.sql("updatedAt = to_timestamp(");
+            _ = try query_builder.sql("\"updatedAt\" = to_timestamp(");
             _ = try query_builder.sql(val_str);
             _ = try query_builder.sql(")");
         }
@@ -535,7 +553,7 @@ pub const UserOperations = struct {
                 first_condition = false;
                 const val_str = try std.fmt.allocPrint(self.allocator, "{d}", .{value});
                 defer self.allocator.free(val_str);
-                _ = try query_builder.sql("id = ");
+                _ = try query_builder.sql("\"id\" = ");
                 _ = try query_builder.sql(val_str);
             }
         }
@@ -545,7 +563,7 @@ pub const UserOperations = struct {
                     _ = try query_builder.sql(" AND ");
                 }
                 first_condition = false;
-                _ = try query_builder.sql("email = '");
+                _ = try query_builder.sql("\"email\" = '");
                 _ = try query_builder.sql(value);
                 _ = try query_builder.sql("'");
             }
@@ -556,7 +574,7 @@ pub const UserOperations = struct {
                     _ = try query_builder.sql(" AND ");
                 }
                 first_condition = false;
-                _ = try query_builder.sql("name = '");
+                _ = try query_builder.sql("\"name\" = '");
                 _ = try query_builder.sql(value);
                 _ = try query_builder.sql("'");
             }
@@ -569,7 +587,7 @@ pub const UserOperations = struct {
                 first_condition = false;
                 const val_str = try std.fmt.allocPrint(self.allocator, "{d}", .{value});
                 defer self.allocator.free(val_str);
-                _ = try query_builder.sql("createdAt = to_timestamp(");
+                _ = try query_builder.sql("\"createdAt\" = to_timestamp(");
                 _ = try query_builder.sql(val_str);
                 _ = try query_builder.sql(")");
             }
@@ -582,14 +600,31 @@ pub const UserOperations = struct {
                 first_condition = false;
                 const val_str = try std.fmt.allocPrint(self.allocator, "{d}", .{value});
                 defer self.allocator.free(val_str);
-                _ = try query_builder.sql("updatedAt = to_timestamp(");
+                _ = try query_builder.sql("\"updatedAt\" = to_timestamp(");
                 _ = try query_builder.sql(val_str);
                 _ = try query_builder.sql(")");
             }
         }
 
+        _ = try query_builder.sql(" RETURNING *");
         const query = query_builder.build();
-        _ = try self.connection.execSafe(query);
+        var result = try self.connection.execSafe(query);
+        
+        if (result.rowCount() == 0) {
+            return null;
+        }
+        
+        if (result.next()) |row| {
+            var record: User = undefined;
+            record.id = try row.get("\"id\"", i32);
+            record.email = try row.get("\"email\"", []const u8);
+            record.name = try row.getOpt("\"name\"", []const u8);
+            record.createdAt = try dt.unixTimeFromISO8601(try row.get("\"createdAt\"", []const u8));
+            record.updatedAt = try dt.unixTimeFromISO8601(try row.get("\"updatedAt\"", []const u8));
+            return record;
+        }
+        
+        return null;
     }
 
     /// Delete a User record
@@ -608,7 +643,7 @@ pub const UserOperations = struct {
                 first_condition = false;
                 const val_str = try std.fmt.allocPrint(self.allocator, "{d}", .{value});
                 defer self.allocator.free(val_str);
-                _ = try query_builder.sql("id = ");
+                _ = try query_builder.sql("\"id\" = ");
                 _ = try query_builder.sql(val_str);
             }
         }
@@ -618,7 +653,7 @@ pub const UserOperations = struct {
                     _ = try query_builder.sql(" AND ");
                 }
                 first_condition = false;
-                _ = try query_builder.sql("email = '");
+                _ = try query_builder.sql("\"email\" = '");
                 _ = try query_builder.sql(value);
                 _ = try query_builder.sql("'");
             }
@@ -629,7 +664,7 @@ pub const UserOperations = struct {
                     _ = try query_builder.sql(" AND ");
                 }
                 first_condition = false;
-                _ = try query_builder.sql("name = '");
+                _ = try query_builder.sql("\"name\" = '");
                 _ = try query_builder.sql(value);
                 _ = try query_builder.sql("'");
             }
@@ -642,7 +677,7 @@ pub const UserOperations = struct {
                 first_condition = false;
                 const val_str = try std.fmt.allocPrint(self.allocator, "to_timestamp({d})", .{value});
                 defer self.allocator.free(val_str);
-                _ = try query_builder.sql("createdAt = ");
+                _ = try query_builder.sql("\"createdAt\" = ");
                 _ = try query_builder.sql(val_str);
             }
         }
@@ -654,7 +689,7 @@ pub const UserOperations = struct {
                 first_condition = false;
                 const val_str = try std.fmt.allocPrint(self.allocator, "to_timestamp({d})", .{value});
                 defer self.allocator.free(val_str);
-                _ = try query_builder.sql("updatedAt = ");
+                _ = try query_builder.sql("\"updatedAt\" = ");
                 _ = try query_builder.sql(val_str);
             }
         }
@@ -700,24 +735,24 @@ pub const PostOperations = struct {
         const columns = [_][]const u8{"title", "content", "published", "authorId", "createdAt"};
         const values = try data.toSqlValues(self.allocator, &columns);
         defer self.allocator.free(values);
-        const key_list = std.mem.join(self.allocator, ", ", &columns) catch "";
-        defer self.allocator.free(key_list);
-        const val_list = values;
+        const quoted_cols = [_][]const u8{"\"title\"", "\"content\"", "\"published\"", "\"authorId\"", "\"createdAt\""};
+        const columns_joined = try std.mem.join(self.allocator, ", ", &quoted_cols);
+        defer self.allocator.free(columns_joined);
         const query = try std.fmt.allocPrint(self.allocator, 
             "INSERT INTO \"posts\" ({s}) VALUES ({s}) RETURNING *;",
-            .{ key_list, val_list }
+            .{ columns_joined, values }
         );
         defer self.allocator.free(query);
         var result = try self.connection.execSafe(query);
         
         if (result.next()) |row| {
             var record: Post = undefined;
-            record.id = try row.get("id", i32);
-            record.title = try row.get("title", []const u8);
-            record.content = try row.getOpt("content", []const u8);
-            record.published = try row.get("published", bool);
-            record.authorId = try row.get("authorId", i32);
-            record.createdAt = try dt.unixTimeFromISO8601(try row.get("createdAt", []const u8));
+            record.id = try row.get("\"id\"", i32);
+            record.title = try row.get("\"title\"", []const u8);
+            record.content = try row.getOpt("\"content\"", []const u8);
+            record.published = try row.get("\"published\"", bool);
+            record.authorId = try row.get("\"authorId\"", i32);
+            record.createdAt = try dt.unixTimeFromISO8601(try row.get("\"createdAt\"", []const u8));
             return record;
         }
         
@@ -742,12 +777,12 @@ pub const PostOperations = struct {
 
         var idx: usize = 0;
         while (result.next()) |row| : (idx += 1) {
-            records[idx].id = try row.get("id", i32);
-            records[idx].title = try row.get("title", []const u8);
-            records[idx].content = try row.getOpt("content", []const u8);
-            records[idx].published = try row.get("published", bool);
-            records[idx].authorId = try row.get("authorId", i32);
-            records[idx].createdAt = try dt.unixTimeFromISO8601( try row.get("createdAt", []const u8) );
+            records[idx].id = try row.get("\"id\"", i32);
+            records[idx].title = try row.get("\"title\"", []const u8);
+            records[idx].content = try row.getOpt("\"content\"", []const u8);
+            records[idx].published = try row.get("\"published\"", bool);
+            records[idx].authorId = try row.get("\"authorId\"", i32);
+            records[idx].createdAt = try dt.unixTimeFromISO8601( try row.get("\"createdAt\"", []const u8) );
         }
 
         return records;
@@ -769,7 +804,7 @@ pub const PostOperations = struct {
                 first_condition = false;
                 const val_str = try std.fmt.allocPrint(self.allocator, "{d}", .{value});
                 defer self.allocator.free(val_str);
-                _ = try query_builder.sql("id = ");
+                _ = try query_builder.sql("\"id\" = ");
                 _ = try query_builder.sql(val_str);
             }
         }
@@ -779,7 +814,7 @@ pub const PostOperations = struct {
                     _ = try query_builder.sql(" AND ");
                 }
                 first_condition = false;
-                _ = try query_builder.sql("title = '");
+                _ = try query_builder.sql("\"title\" = '");
                 _ = try query_builder.sql(value);
                 _ = try query_builder.sql("'");
             }
@@ -790,7 +825,7 @@ pub const PostOperations = struct {
                     _ = try query_builder.sql(" AND ");
                 }
                 first_condition = false;
-                _ = try query_builder.sql("content = '");
+                _ = try query_builder.sql("\"content\" = '");
                 _ = try query_builder.sql(value);
                 _ = try query_builder.sql("'");
             }
@@ -801,7 +836,7 @@ pub const PostOperations = struct {
                     _ = try query_builder.sql(" AND ");
                 }
                 first_condition = false;
-                _ = try query_builder.sql("published = ");
+                _ = try query_builder.sql("\"published\" = ");
                 _ = try query_builder.sql(if (value) "true" else "false");
             }
         }
@@ -813,7 +848,7 @@ pub const PostOperations = struct {
                 first_condition = false;
                 const val_str = try std.fmt.allocPrint(self.allocator, "{d}", .{value});
                 defer self.allocator.free(val_str);
-                _ = try query_builder.sql("authorId = ");
+                _ = try query_builder.sql("\"authorId\" = ");
                 _ = try query_builder.sql(val_str);
             }
         }
@@ -825,7 +860,7 @@ pub const PostOperations = struct {
                 first_condition = false;
                 const val_str = try std.fmt.allocPrint(self.allocator, "to_timestamp({d})", .{value});
                 defer self.allocator.free(val_str);
-                _ = try query_builder.sql("createdAt = ");
+                _ = try query_builder.sql("\"createdAt\" = ");
                 _ = try query_builder.sql(val_str);
             }
         }
@@ -840,12 +875,12 @@ pub const PostOperations = struct {
 
         if (result.next()) |row| {
             var record: Post = undefined;
-            record.id = try row.get("id", i32);
-            record.title = try row.get("title", []const u8);
-            record.content = try row.getOpt("content", []const u8);
-            record.published = try row.get("published", bool);
-            record.authorId = try row.get("authorId", i32);
-            record.createdAt = try dt.unixTimeFromISO8601(try row.get("createdAt", []const u8));
+            record.id = try row.get("\"id\"", i32);
+            record.title = try row.get("\"title\"", []const u8);
+            record.content = try row.getOpt("\"content\"", []const u8);
+            record.published = try row.get("\"published\"", bool);
+            record.authorId = try row.get("\"authorId\"", i32);
+            record.createdAt = try dt.unixTimeFromISO8601(try row.get("\"createdAt\"", []const u8));
             return record;
         }
 
@@ -853,7 +888,7 @@ pub const PostOperations = struct {
     }
 
     /// Update a Post record
-    pub fn update(self: *@This(), options: struct { where: PostWhere, data: PostUpdateData }) !void {
+    pub fn update(self: *@This(), options: struct { where: PostWhere, data: PostUpdateData }) !?Post {
         var query_builder = QueryBuilder.init(self.allocator);
         defer query_builder.deinit();
         _ = try query_builder.sql("UPDATE \"posts\" SET ");
@@ -865,7 +900,7 @@ pub const PostOperations = struct {
                 _ = try query_builder.sql(", ");
             }
             first_field = false;
-            _ = try query_builder.sql("title = '");
+            _ = try query_builder.sql("\"title\" = '");
             _ = try query_builder.sql(value);
             _ = try query_builder.sql("'");
         }
@@ -874,7 +909,7 @@ pub const PostOperations = struct {
                 _ = try query_builder.sql(", ");
             }
             first_field = false;
-            _ = try query_builder.sql("content = '");
+            _ = try query_builder.sql("\"content\" = '");
             _ = try query_builder.sql(value);
             _ = try query_builder.sql("'");
         }
@@ -884,7 +919,7 @@ pub const PostOperations = struct {
             }
             first_field = false;
             const bool_str = if (value) "TRUE" else "FALSE";
-            _ = try query_builder.sql("published = ");
+            _ = try query_builder.sql("\"published\" = ");
             _ = try query_builder.sql(bool_str);
         }
         if (options.data.authorId) |value| {
@@ -894,7 +929,7 @@ pub const PostOperations = struct {
             first_field = false;
             const val_str = try std.fmt.allocPrint(self.allocator, "{d}", .{value});
             defer self.allocator.free(val_str);
-            _ = try query_builder.sql("authorId = ");
+            _ = try query_builder.sql("\"authorId\" = ");
             _ = try query_builder.sql(val_str);
         }
         if (options.data.createdAt) |value| {
@@ -904,7 +939,7 @@ pub const PostOperations = struct {
             first_field = false;
             const val_str = try std.fmt.allocPrint(self.allocator, "{d}", .{value});
             defer self.allocator.free(val_str);
-            _ = try query_builder.sql("createdAt = to_timestamp(");
+            _ = try query_builder.sql("\"createdAt\" = to_timestamp(");
             _ = try query_builder.sql(val_str);
             _ = try query_builder.sql(")");
         }
@@ -921,7 +956,7 @@ pub const PostOperations = struct {
                 first_condition = false;
                 const val_str = try std.fmt.allocPrint(self.allocator, "{d}", .{value});
                 defer self.allocator.free(val_str);
-                _ = try query_builder.sql("id = ");
+                _ = try query_builder.sql("\"id\" = ");
                 _ = try query_builder.sql(val_str);
             }
         }
@@ -931,7 +966,7 @@ pub const PostOperations = struct {
                     _ = try query_builder.sql(" AND ");
                 }
                 first_condition = false;
-                _ = try query_builder.sql("title = '");
+                _ = try query_builder.sql("\"title\" = '");
                 _ = try query_builder.sql(value);
                 _ = try query_builder.sql("'");
             }
@@ -942,7 +977,7 @@ pub const PostOperations = struct {
                     _ = try query_builder.sql(" AND ");
                 }
                 first_condition = false;
-                _ = try query_builder.sql("content = '");
+                _ = try query_builder.sql("\"content\" = '");
                 _ = try query_builder.sql(value);
                 _ = try query_builder.sql("'");
             }
@@ -954,7 +989,7 @@ pub const PostOperations = struct {
                 }
                 first_condition = false;
                 const bool_str = if (value) "TRUE" else "FALSE";
-                _ = try query_builder.sql("published = ");
+                _ = try query_builder.sql("\"published\" = ");
                 _ = try query_builder.sql(bool_str);
             }
         }
@@ -966,7 +1001,7 @@ pub const PostOperations = struct {
                 first_condition = false;
                 const val_str = try std.fmt.allocPrint(self.allocator, "{d}", .{value});
                 defer self.allocator.free(val_str);
-                _ = try query_builder.sql("authorId = ");
+                _ = try query_builder.sql("\"authorId\" = ");
                 _ = try query_builder.sql(val_str);
             }
         }
@@ -978,14 +1013,32 @@ pub const PostOperations = struct {
                 first_condition = false;
                 const val_str = try std.fmt.allocPrint(self.allocator, "{d}", .{value});
                 defer self.allocator.free(val_str);
-                _ = try query_builder.sql("createdAt = to_timestamp(");
+                _ = try query_builder.sql("\"createdAt\" = to_timestamp(");
                 _ = try query_builder.sql(val_str);
                 _ = try query_builder.sql(")");
             }
         }
 
+        _ = try query_builder.sql(" RETURNING *");
         const query = query_builder.build();
-        _ = try self.connection.execSafe(query);
+        var result = try self.connection.execSafe(query);
+        
+        if (result.rowCount() == 0) {
+            return null;
+        }
+        
+        if (result.next()) |row| {
+            var record: Post = undefined;
+            record.id = try row.get("\"id\"", i32);
+            record.title = try row.get("\"title\"", []const u8);
+            record.content = try row.getOpt("\"content\"", []const u8);
+            record.published = try row.get("\"published\"", bool);
+            record.authorId = try row.get("\"authorId\"", i32);
+            record.createdAt = try dt.unixTimeFromISO8601(try row.get("\"createdAt\"", []const u8));
+            return record;
+        }
+        
+        return null;
     }
 
     /// Delete a Post record
@@ -1004,7 +1057,7 @@ pub const PostOperations = struct {
                 first_condition = false;
                 const val_str = try std.fmt.allocPrint(self.allocator, "{d}", .{value});
                 defer self.allocator.free(val_str);
-                _ = try query_builder.sql("id = ");
+                _ = try query_builder.sql("\"id\" = ");
                 _ = try query_builder.sql(val_str);
             }
         }
@@ -1014,7 +1067,7 @@ pub const PostOperations = struct {
                     _ = try query_builder.sql(" AND ");
                 }
                 first_condition = false;
-                _ = try query_builder.sql("title = '");
+                _ = try query_builder.sql("\"title\" = '");
                 _ = try query_builder.sql(value);
                 _ = try query_builder.sql("'");
             }
@@ -1025,7 +1078,7 @@ pub const PostOperations = struct {
                     _ = try query_builder.sql(" AND ");
                 }
                 first_condition = false;
-                _ = try query_builder.sql("content = '");
+                _ = try query_builder.sql("\"content\" = '");
                 _ = try query_builder.sql(value);
                 _ = try query_builder.sql("'");
             }
@@ -1036,7 +1089,7 @@ pub const PostOperations = struct {
                     _ = try query_builder.sql(" AND ");
                 }
                 first_condition = false;
-                _ = try query_builder.sql("published = ");
+                _ = try query_builder.sql("\"published\" = ");
                 _ = try query_builder.sql(if (value) "true" else "false");
             }
         }
@@ -1048,7 +1101,7 @@ pub const PostOperations = struct {
                 first_condition = false;
                 const val_str = try std.fmt.allocPrint(self.allocator, "{d}", .{value});
                 defer self.allocator.free(val_str);
-                _ = try query_builder.sql("authorId = ");
+                _ = try query_builder.sql("\"authorId\" = ");
                 _ = try query_builder.sql(val_str);
             }
         }
@@ -1060,7 +1113,7 @@ pub const PostOperations = struct {
                 first_condition = false;
                 const val_str = try std.fmt.allocPrint(self.allocator, "to_timestamp({d})", .{value});
                 defer self.allocator.free(val_str);
-                _ = try query_builder.sql("createdAt = ");
+                _ = try query_builder.sql("\"createdAt\" = ");
                 _ = try query_builder.sql(val_str);
             }
         }
@@ -1100,21 +1153,21 @@ pub const ProfileOperations = struct {
         const columns = [_][]const u8{"bio", "user_id"};
         const values = try data.toSqlValues(self.allocator, &columns);
         defer self.allocator.free(values);
-        const key_list = std.mem.join(self.allocator, ", ", &columns) catch "";
-        defer self.allocator.free(key_list);
-        const val_list = values;
+        const quoted_cols = [_][]const u8{"\"bio\"", "\"user_id\""};
+        const columns_joined = try std.mem.join(self.allocator, ", ", &quoted_cols);
+        defer self.allocator.free(columns_joined);
         const query = try std.fmt.allocPrint(self.allocator, 
             "INSERT INTO \"profile\" ({s}) VALUES ({s}) RETURNING *;",
-            .{ key_list, val_list }
+            .{ columns_joined, values }
         );
         defer self.allocator.free(query);
         var result = try self.connection.execSafe(query);
         
         if (result.next()) |row| {
             var record: Profile = undefined;
-            record.id = try row.get("id", i32);
-            record.bio = try row.getOpt("bio", []const u8);
-            record.userId = try row.get("user_id", i32);
+            record.id = try row.get("\"id\"", i32);
+            record.bio = try row.getOpt("\"bio\"", []const u8);
+            record.userId = try row.get("\"user_id\"", i32);
             return record;
         }
         
@@ -1139,9 +1192,9 @@ pub const ProfileOperations = struct {
 
         var idx: usize = 0;
         while (result.next()) |row| : (idx += 1) {
-            records[idx].id = try row.get("id", i32);
-            records[idx].bio = try row.getOpt("bio", []const u8);
-            records[idx].userId = try row.get("user_id", i32);
+            records[idx].id = try row.get("\"id\"", i32);
+            records[idx].bio = try row.getOpt("\"bio\"", []const u8);
+            records[idx].userId = try row.get("\"user_id\"", i32);
         }
 
         return records;
@@ -1163,7 +1216,7 @@ pub const ProfileOperations = struct {
                 first_condition = false;
                 const val_str = try std.fmt.allocPrint(self.allocator, "{d}", .{value});
                 defer self.allocator.free(val_str);
-                _ = try query_builder.sql("id = ");
+                _ = try query_builder.sql("\"id\" = ");
                 _ = try query_builder.sql(val_str);
             }
         }
@@ -1173,7 +1226,7 @@ pub const ProfileOperations = struct {
                     _ = try query_builder.sql(" AND ");
                 }
                 first_condition = false;
-                _ = try query_builder.sql("bio = '");
+                _ = try query_builder.sql("\"bio\" = '");
                 _ = try query_builder.sql(value);
                 _ = try query_builder.sql("'");
             }
@@ -1186,7 +1239,7 @@ pub const ProfileOperations = struct {
                 first_condition = false;
                 const val_str = try std.fmt.allocPrint(self.allocator, "{d}", .{value});
                 defer self.allocator.free(val_str);
-                _ = try query_builder.sql("user_id = ");
+                _ = try query_builder.sql("\"user_id\" = ");
                 _ = try query_builder.sql(val_str);
             }
         }
@@ -1201,9 +1254,9 @@ pub const ProfileOperations = struct {
 
         if (result.next()) |row| {
             var record: Profile = undefined;
-            record.id = try row.get("id", i32);
-            record.bio = try row.getOpt("bio", []const u8);
-            record.userId = try row.get("user_id", i32);
+            record.id = try row.get("\"id\"", i32);
+            record.bio = try row.getOpt("\"bio\"", []const u8);
+            record.userId = try row.get("\"user_id\"", i32);
             return record;
         }
 
@@ -1211,7 +1264,7 @@ pub const ProfileOperations = struct {
     }
 
     /// Update a Profile record
-    pub fn update(self: *@This(), options: struct { where: ProfileWhere, data: ProfileUpdateData }) !void {
+    pub fn update(self: *@This(), options: struct { where: ProfileWhere, data: ProfileUpdateData }) !?Profile {
         var query_builder = QueryBuilder.init(self.allocator);
         defer query_builder.deinit();
         _ = try query_builder.sql("UPDATE \"profile\" SET ");
@@ -1223,7 +1276,7 @@ pub const ProfileOperations = struct {
                 _ = try query_builder.sql(", ");
             }
             first_field = false;
-            _ = try query_builder.sql("bio = '");
+            _ = try query_builder.sql("\"bio\" = '");
             _ = try query_builder.sql(value);
             _ = try query_builder.sql("'");
         }
@@ -1234,7 +1287,7 @@ pub const ProfileOperations = struct {
             first_field = false;
             const val_str = try std.fmt.allocPrint(self.allocator, "{d}", .{value});
             defer self.allocator.free(val_str);
-            _ = try query_builder.sql("user_id = ");
+            _ = try query_builder.sql("\"user_id\" = ");
             _ = try query_builder.sql(val_str);
         }
 
@@ -1250,7 +1303,7 @@ pub const ProfileOperations = struct {
                 first_condition = false;
                 const val_str = try std.fmt.allocPrint(self.allocator, "{d}", .{value});
                 defer self.allocator.free(val_str);
-                _ = try query_builder.sql("id = ");
+                _ = try query_builder.sql("\"id\" = ");
                 _ = try query_builder.sql(val_str);
             }
         }
@@ -1260,7 +1313,7 @@ pub const ProfileOperations = struct {
                     _ = try query_builder.sql(" AND ");
                 }
                 first_condition = false;
-                _ = try query_builder.sql("bio = '");
+                _ = try query_builder.sql("\"bio\" = '");
                 _ = try query_builder.sql(value);
                 _ = try query_builder.sql("'");
             }
@@ -1273,13 +1326,28 @@ pub const ProfileOperations = struct {
                 first_condition = false;
                 const val_str = try std.fmt.allocPrint(self.allocator, "{d}", .{value});
                 defer self.allocator.free(val_str);
-                _ = try query_builder.sql("user_id = ");
+                _ = try query_builder.sql("\"user_id\" = ");
                 _ = try query_builder.sql(val_str);
             }
         }
 
+        _ = try query_builder.sql(" RETURNING *");
         const query = query_builder.build();
-        _ = try self.connection.execSafe(query);
+        var result = try self.connection.execSafe(query);
+        
+        if (result.rowCount() == 0) {
+            return null;
+        }
+        
+        if (result.next()) |row| {
+            var record: Profile = undefined;
+            record.id = try row.get("\"id\"", i32);
+            record.bio = try row.getOpt("\"bio\"", []const u8);
+            record.userId = try row.get("\"user_id\"", i32);
+            return record;
+        }
+        
+        return null;
     }
 
     /// Delete a Profile record
@@ -1298,7 +1366,7 @@ pub const ProfileOperations = struct {
                 first_condition = false;
                 const val_str = try std.fmt.allocPrint(self.allocator, "{d}", .{value});
                 defer self.allocator.free(val_str);
-                _ = try query_builder.sql("id = ");
+                _ = try query_builder.sql("\"id\" = ");
                 _ = try query_builder.sql(val_str);
             }
         }
@@ -1308,7 +1376,7 @@ pub const ProfileOperations = struct {
                     _ = try query_builder.sql(" AND ");
                 }
                 first_condition = false;
-                _ = try query_builder.sql("bio = '");
+                _ = try query_builder.sql("\"bio\" = '");
                 _ = try query_builder.sql(value);
                 _ = try query_builder.sql("'");
             }
@@ -1321,7 +1389,7 @@ pub const ProfileOperations = struct {
                 first_condition = false;
                 const val_str = try std.fmt.allocPrint(self.allocator, "{d}", .{value});
                 defer self.allocator.free(val_str);
-                _ = try query_builder.sql("user_id = ");
+                _ = try query_builder.sql("\"user_id\" = ");
                 _ = try query_builder.sql(val_str);
             }
         }

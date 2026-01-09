@@ -712,30 +712,30 @@ pub const Generator = struct {
 
             switch (field.type) {
                 .string => {
-                    try output.writer(self.allocator).print("                _ = try query_builder.sql(\"{s} = '\");\n", .{column_name});
+                    try output.writer(self.allocator).print("                _ = try query_builder.sql(\"\\\"{s}\\\" = '\");\n", .{column_name});
                     try output.appendSlice(self.allocator, "                _ = try query_builder.sql(value);\n");
                     try output.appendSlice(self.allocator, "                _ = try query_builder.sql(\"'\");\n");
                 },
                 .int => {
                     try output.writer(self.allocator).print("                const val_str = try std.fmt.allocPrint(self.allocator, \"{{d}}\", .{{value}});\n", .{});
                     try output.appendSlice(self.allocator, "                defer self.allocator.free(val_str);\n");
-                    try output.writer(self.allocator).print("                _ = try query_builder.sql(\"{s} = \");\n", .{column_name});
+                    try output.writer(self.allocator).print("                _ = try query_builder.sql(\"\\\"{s}\\\" = \");\n", .{column_name});
                     try output.appendSlice(self.allocator, "                _ = try query_builder.sql(val_str);\n");
                 },
                 .boolean => {
-                    try output.writer(self.allocator).print("                _ = try query_builder.sql(\"{s} = \");\n", .{column_name});
+                    try output.writer(self.allocator).print("                _ = try query_builder.sql(\"\\\"{s}\\\" = \");\n", .{column_name});
                     try output.appendSlice(self.allocator, "                _ = try query_builder.sql(if (value) \"true\" else \"false\");\n");
                 },
                 .datetime => {
                     try output.writer(self.allocator).print("                const val_str = try std.fmt.allocPrint(self.allocator, \"to_timestamp({{d}})\", .{{value}});\n", .{});
                     try output.appendSlice(self.allocator, "                defer self.allocator.free(val_str);\n");
-                    try output.writer(self.allocator).print("                _ = try query_builder.sql(\"{s} = \");\n", .{column_name});
+                    try output.writer(self.allocator).print("                _ = try query_builder.sql(\"\\\"{s}\\\" = \");\n", .{column_name});
                     try output.appendSlice(self.allocator, "                _ = try query_builder.sql(val_str);\n");
                 },
                 .float, .decimal => {
                     try output.writer(self.allocator).print("                const val_str = try std.fmt.allocPrint(self.allocator, \"{{d}}\", .{{value}});\n", .{});
                     try output.appendSlice(self.allocator, "                defer self.allocator.free(val_str);\n");
-                    try output.writer(self.allocator).print("                _ = try query_builder.sql(\"{s} = \");\n", .{column_name});
+                    try output.writer(self.allocator).print("                _ = try query_builder.sql(\"\\\"{s}\\\" = \");\n", .{column_name});
                     try output.appendSlice(self.allocator, "                _ = try query_builder.sql(val_str);\n");
                 },
                 else => {},
@@ -836,32 +836,32 @@ pub const Generator = struct {
 
             switch (field.type) {
                 .string => {
-                    try output.writer(self.allocator).print("            _ = try query_builder.sql(\"{s} = '\");\n", .{column_name});
+                    try output.writer(self.allocator).print("            _ = try query_builder.sql(\"\\\"{s}\\\" = '\");\n", .{column_name});
                     try output.appendSlice(self.allocator, "            _ = try query_builder.sql(value);\n");
                     try output.appendSlice(self.allocator, "            _ = try query_builder.sql(\"'\");\n");
                 },
                 .int => {
                     try output.appendSlice(self.allocator, "            const val_str = try std.fmt.allocPrint(self.allocator, \"{d}\", .{value});\n");
                     try output.appendSlice(self.allocator, "            defer self.allocator.free(val_str);\n");
-                    try output.writer(self.allocator).print("            _ = try query_builder.sql(\"{s} = \");\n", .{column_name});
+                    try output.writer(self.allocator).print("            _ = try query_builder.sql(\"\\\"{s}\\\" = \");\n", .{column_name});
                     try output.appendSlice(self.allocator, "            _ = try query_builder.sql(val_str);\n");
                 },
                 .boolean => {
                     try output.appendSlice(self.allocator, "            const bool_str = if (value) \"TRUE\" else \"FALSE\";\n");
-                    try output.writer(self.allocator).print("            _ = try query_builder.sql(\"{s} = \");\n", .{column_name});
+                    try output.writer(self.allocator).print("            _ = try query_builder.sql(\"\\\"{s}\\\" = \");\n", .{column_name});
                     try output.appendSlice(self.allocator, "            _ = try query_builder.sql(bool_str);\n");
                 },
                 .datetime => {
                     try output.appendSlice(self.allocator, "            const val_str = try std.fmt.allocPrint(self.allocator, \"{d}\", .{value});\n");
                     try output.appendSlice(self.allocator, "            defer self.allocator.free(val_str);\n");
-                    try output.writer(self.allocator).print("            _ = try query_builder.sql(\"{s} = to_timestamp(\");\n", .{column_name});
+                    try output.writer(self.allocator).print("            _ = try query_builder.sql(\"\\\"{s}\\\" = to_timestamp(\");\n", .{column_name});
                     try output.appendSlice(self.allocator, "            _ = try query_builder.sql(val_str);\n");
                     try output.appendSlice(self.allocator, "            _ = try query_builder.sql(\")\");\n");
                 },
                 .float, .decimal => {
                     try output.appendSlice(self.allocator, "            const val_str = try std.fmt.allocPrint(self.allocator, \"{d}\", .{value});\n");
                     try output.appendSlice(self.allocator, "            defer self.allocator.free(val_str);\n");
-                    try output.writer(self.allocator).print("            _ = try query_builder.sql(\"{s} = \");\n", .{column_name});
+                    try output.writer(self.allocator).print("            _ = try query_builder.sql(\"\\\"{s}\\\" = \");\n", .{column_name});
                     try output.appendSlice(self.allocator, "            _ = try query_builder.sql(val_str);\n");
                 },
                 else => {},
@@ -889,32 +889,32 @@ pub const Generator = struct {
 
             switch (field.type) {
                 .string => {
-                    try output.writer(self.allocator).print("                _ = try query_builder.sql(\"{s} = '\");\n", .{column_name});
+                    try output.writer(self.allocator).print("                _ = try query_builder.sql(\"\\\"{s}\\\" = '\");\n", .{column_name});
                     try output.appendSlice(self.allocator, "                _ = try query_builder.sql(value);\n");
                     try output.appendSlice(self.allocator, "                _ = try query_builder.sql(\"'\");\n");
                 },
                 .int => {
                     try output.appendSlice(self.allocator, "                const val_str = try std.fmt.allocPrint(self.allocator, \"{d}\", .{value});\n");
                     try output.appendSlice(self.allocator, "                defer self.allocator.free(val_str);\n");
-                    try output.writer(self.allocator).print("                _ = try query_builder.sql(\"{s} = \");\n", .{column_name});
+                    try output.writer(self.allocator).print("                _ = try query_builder.sql(\"\\\"{s}\\\" = \");\n", .{column_name});
                     try output.appendSlice(self.allocator, "                _ = try query_builder.sql(val_str);\n");
                 },
                 .boolean => {
                     try output.appendSlice(self.allocator, "                const bool_str = if (value) \"TRUE\" else \"FALSE\";\n");
-                    try output.writer(self.allocator).print("                _ = try query_builder.sql(\"{s} = \");\n", .{column_name});
+                    try output.writer(self.allocator).print("                _ = try query_builder.sql(\"\\\"{s}\\\" = \");\n", .{column_name});
                     try output.appendSlice(self.allocator, "                _ = try query_builder.sql(bool_str);\n");
                 },
                 .datetime => {
                     try output.appendSlice(self.allocator, "                const val_str = try std.fmt.allocPrint(self.allocator, \"{d}\", .{value});\n");
                     try output.appendSlice(self.allocator, "                defer self.allocator.free(val_str);\n");
-                    try output.writer(self.allocator).print("                _ = try query_builder.sql(\"{s} = to_timestamp(\");\n", .{column_name});
+                    try output.writer(self.allocator).print("                _ = try query_builder.sql(\"\\\"{s}\\\" = to_timestamp(\");\n", .{column_name});
                     try output.appendSlice(self.allocator, "                _ = try query_builder.sql(val_str);\n");
                     try output.appendSlice(self.allocator, "                _ = try query_builder.sql(\")\");\n");
                 },
                 .float, .decimal => {
                     try output.appendSlice(self.allocator, "                const val_str = try std.fmt.allocPrint(self.allocator, \"{d}\", .{value});\n");
                     try output.appendSlice(self.allocator, "                defer self.allocator.free(val_str);\n");
-                    try output.writer(self.allocator).print("                _ = try query_builder.sql(\"{s} = \");\n", .{column_name});
+                    try output.writer(self.allocator).print("                _ = try query_builder.sql(\"\\\"{s}\\\" = \");\n", .{column_name});
                     try output.appendSlice(self.allocator, "                _ = try query_builder.sql(val_str);\n");
                 },
                 else => {},
@@ -1018,30 +1018,30 @@ pub const Generator = struct {
 
             switch (field.type) {
                 .string => {
-                    try output.writer(self.allocator).print("                _ = try query_builder.sql(\"{s} = '\");\n", .{column_name});
+                    try output.writer(self.allocator).print("                _ = try query_builder.sql(\"\\\"{s}\\\" = '\");\n", .{column_name});
                     try output.appendSlice(self.allocator, "                _ = try query_builder.sql(value);\n");
                     try output.appendSlice(self.allocator, "                _ = try query_builder.sql(\"'\");\n");
                 },
                 .int => {
                     try output.appendSlice(self.allocator, "                const val_str = try std.fmt.allocPrint(self.allocator, \"{d}\", .{value});\n");
                     try output.appendSlice(self.allocator, "                defer self.allocator.free(val_str);\n");
-                    try output.writer(self.allocator).print("                _ = try query_builder.sql(\"{s} = \");\n", .{column_name});
+                    try output.writer(self.allocator).print("                _ = try query_builder.sql(\"\\\"{s}\\\" = \");\n", .{column_name});
                     try output.appendSlice(self.allocator, "                _ = try query_builder.sql(val_str);\n");
                 },
                 .boolean => {
-                    try output.writer(self.allocator).print("                _ = try query_builder.sql(\"{s} = \");\n", .{column_name});
+                    try output.writer(self.allocator).print("                _ = try query_builder.sql(\"\\\"{s}\\\" = \");\n", .{column_name});
                     try output.appendSlice(self.allocator, "                _ = try query_builder.sql(if (value) \"true\" else \"false\");\n");
                 },
                 .datetime => {
                     try output.appendSlice(self.allocator, "                const val_str = try std.fmt.allocPrint(self.allocator, \"to_timestamp({d})\", .{value});\n");
                     try output.appendSlice(self.allocator, "                defer self.allocator.free(val_str);\n");
-                    try output.writer(self.allocator).print("                _ = try query_builder.sql(\"{s} = \");\n", .{column_name});
+                    try output.writer(self.allocator).print("                _ = try query_builder.sql(\"\\\"{s}\\\" = \");\n", .{column_name});
                     try output.appendSlice(self.allocator, "                _ = try query_builder.sql(val_str);\n");
                 },
                 .float, .decimal => {
                     try output.appendSlice(self.allocator, "                const val_str = try std.fmt.allocPrint(self.allocator, \"{d}\", .{value});\n");
                     try output.appendSlice(self.allocator, "                defer self.allocator.free(val_str);\n");
-                    try output.writer(self.allocator).print("                _ = try query_builder.sql(\"{s} = \");\n", .{column_name});
+                    try output.writer(self.allocator).print("                _ = try query_builder.sql(\"\\\"{s}\\\" = \");\n", .{column_name});
                     try output.appendSlice(self.allocator, "                _ = try query_builder.sql(val_str);\n");
                 },
                 else => {},
