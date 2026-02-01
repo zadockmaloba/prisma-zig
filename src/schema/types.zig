@@ -71,14 +71,50 @@ pub const FieldType = union(enum) {
             .decimal => "f64", // Use f64 for decimal values
             .json => "Json", // JSON string representation
             .model_ref => |model_name| model_name, // Use the model name as type
-            .model_array => |model_name| model_name, // Will be handled specially in codegen
+            .model_array => |full_name| {
+                // Check if it's a scalar array (String[], Int[], etc.) or a model array
+                const base_name = if (std.mem.endsWith(u8, full_name, "[]"))
+                    full_name[0 .. full_name.len - 2]
+                else
+                    full_name;
+
+                // Check if base name is a Prisma primitive type
+                if (std.mem.eql(u8, base_name, "String")) return "[][]const u8";
+                if (std.mem.eql(u8, base_name, "Int")) return "[]i32";
+                if (std.mem.eql(u8, base_name, "Float")) return "[]f64";
+                if (std.mem.eql(u8, base_name, "Boolean")) return "[]bool";
+                if (std.mem.eql(u8, base_name, "DateTime")) return "[]i64";
+                if (std.mem.eql(u8, base_name, "Decimal")) return "[]f64";
+                if (std.mem.eql(u8, base_name, "Json")) return "[]Json";
+
+                // Otherwise it's a model array, return as-is for codegen
+                return full_name;
+            },
         };
     }
 
     /// Check if this field type represents a relationship
     pub fn isRelation(self: FieldType) bool {
         return switch (self) {
-            .model_ref, .model_array => true,
+            .model_ref => true,
+            .model_array => |full_name| {
+                // Only treat as relation if it's not a scalar array
+                const base_name = if (std.mem.endsWith(u8, full_name, "[]"))
+                    full_name[0 .. full_name.len - 2]
+                else
+                    full_name;
+
+                // Scalar arrays are not relations
+                if (std.mem.eql(u8, base_name, "String")) return false;
+                if (std.mem.eql(u8, base_name, "Int")) return false;
+                if (std.mem.eql(u8, base_name, "Float")) return false;
+                if (std.mem.eql(u8, base_name, "Boolean")) return false;
+                if (std.mem.eql(u8, base_name, "DateTime")) return false;
+                if (std.mem.eql(u8, base_name, "Decimal")) return false;
+                if (std.mem.eql(u8, base_name, "Json")) return false;
+
+                return true; // It's a model array
+            },
             else => false,
         };
     }
