@@ -116,6 +116,7 @@ pub const Generator = struct {
             \\const std = @import("std");
             \\const psql = @import("libpq_zig");
             \\const dt = @import("datetime");
+            \\pub const Json = []const u8;
             \\
             \\pub const Connection = psql.Connection;
             \\pub const QueryBuilder = psql.QueryBuilder;
@@ -176,6 +177,31 @@ pub const Generator = struct {
             const escaped_name = try escapeFieldName(self.allocator, field.name);
             defer if (needsEscape(field.name)) self.allocator.free(escaped_name);
             try self.output.writer(self.allocator).print("    {s}: {s}{s},\n", .{ escaped_name, optional_marker, zig_type });
+        }
+
+        // Add allocator field for cached relation management
+        try self.output.appendSlice(self.allocator, "\n    /// Allocator for cached relations (must be set to use cached loaders)\n");
+        try self.output.appendSlice(self.allocator, "    _allocator: ?std.mem.Allocator = null,\n");
+
+        // Add cached relation fields
+        for (model.fields.items) |*field| {
+            if (isFieldRelation(field, self.schema)) {
+                const relation_type = field.type.toZigType();
+                const optional_marker = if (field.optional or field.type.isArray()) "?" else "?";
+                
+                const escaped_name = try escapeFieldName(self.allocator, field.name);
+                defer if (needsEscape(field.name)) self.allocator.free(escaped_name);
+                
+                try self.output.writer(self.allocator).print("    /// Cached {s} relation\n", .{field.name});
+                if (field.type.isArray()) {
+                    // For array relations, cache the slice
+                    const model_name = field.type.getModelName().?;
+                    try self.output.writer(self.allocator).print("    _cached_{s}: ?[]{s} = null,\n", .{ escaped_name, model_name });
+                } else {
+                    // For singular relations, cache the model instance
+                    try self.output.writer(self.allocator).print("    _cached_{s}: {s}{s} = null,\n", .{ escaped_name, optional_marker, relation_type });
+                }
+            }
         }
 
         // Generate helper methods
@@ -253,6 +279,12 @@ pub const Generator = struct {
 
         // Generate toSql method for CREATE operations
         try self.generateToSqlMethod(model);
+        
+        // Generate cache management methods
+        try self.generateCacheManagementMethods(model);
+        
+        // Generate relation loader methods
+        try self.generateRelationLoaderMethods(model);
     }
 
     /// Generate toSql method for converting struct to SQL values
@@ -294,6 +326,7 @@ pub const Generator = struct {
                     .boolean => try output.writer(self.allocator).print("            try values.appendSlice(allocator, if (self.{s}) \"true\" else \"false\");\n", .{field.name}),
                     .datetime => try output.writer(self.allocator).print("            try values.writer(allocator).print(\"to_timestamp({{d}})\", .{{self.{s}}});\n", .{field.name}),
                     .decimal => try output.writer(self.allocator).print("            try values.writer(allocator).print(\"{{d}}\", .{{self.{s}}});\n", .{field.name}),
+                    .json => try output.writer(self.allocator).print("            try values.writer(allocator).print(\"'{{s}}'::jsonb\", .{{self.{s}}});\n", .{field.name}),
                     .model_ref, .model_array => {
                         // Relationship fields should be skipped above, but handle gracefully
                         try output.appendSlice(self.allocator, "            // Relationship field - handled separately\n");
@@ -315,6 +348,7 @@ pub const Generator = struct {
                 .boolean => try output.appendSlice(self.allocator, "                try values.appendSlice(allocator, if (val) \"true\" else \"false\");\n"),
                 .datetime => try output.appendSlice(self.allocator, "                try values.writer(allocator).print(\"to_timestamp({d})\", .{val});\n"),
                 .decimal => try output.appendSlice(self.allocator, "                try values.writer(allocator).print(\"{d}\", .{val});\n"),
+                .json => try output.appendSlice(self.allocator, "                try values.writer(allocator).print(\"'{s}'::jsonb\", .{val});\n"),
                 .model_ref, .model_array => {
                     // Relationship fields should be skipped above, but handle gracefully
                     try output.appendSlice(self.allocator, "                // Relationship field - handled separately\n");
@@ -329,6 +363,179 @@ pub const Generator = struct {
 
         try output.appendSlice(self.allocator, "        return values.toOwnedSlice(allocator);\n");
         try output.appendSlice(self.allocator, "    }\n");
+    }
+
+    /// Generate cache management methods (setAllocator, clearCache)
+    fn generateCacheManagementMethods(self: *Generator, model: *const PrismaModel) CodeGenError!void {
+        var output = &self.output;
+        
+        // Generate setAllocator method
+        try output.appendSlice(self.allocator, "\n    /// Set allocator for cached relation loading\n");
+        try output.appendSlice(self.allocator, "    pub fn setAllocator(self: *@This(), allocator: std.mem.Allocator) void {\n");
+        try output.appendSlice(self.allocator, "        self._allocator = allocator;\n");
+        try output.appendSlice(self.allocator, "    }\n");
+        
+        // Generate clearCache method
+        try output.appendSlice(self.allocator, "\n    /// Clear all cached relations\n");
+        try output.appendSlice(self.allocator, "    pub fn clearCache(self: *@This()) void {\n");
+        try output.appendSlice(self.allocator, "        if (self._allocator) |alloc| {\n");
+
+        var arr_count: u32 = 0;
+        
+        // Free each cached relation
+        for (model.fields.items) |*field| {
+            if (isFieldRelation(field, self.schema)) {
+                const escaped_name = try escapeFieldName(self.allocator, field.name);
+                defer if (needsEscape(field.name)) self.allocator.free(escaped_name);
+                
+                if (field.type.isArray()) {
+                    // Free array slice
+                    try output.writer(self.allocator).print("            if (self._cached_{s}) |cached| {{\n", .{escaped_name});
+                    try output.appendSlice(self.allocator, "                alloc.free(cached);\n");
+                    try output.writer(self.allocator).print("                self._cached_{s} = null;\n", .{escaped_name});
+                    try output.appendSlice(self.allocator, "            }\n");
+                    arr_count += 1;
+                } else {
+                    // For singular relations, just set to null (they're values, not pointers)
+                    try output.writer(self.allocator).print("            self._cached_{s} = null;\n", .{escaped_name});
+                }
+            }
+        }
+
+        if (arr_count == 0) try output.appendSlice(self.allocator, "        _ = alloc;\n");
+        
+        try output.appendSlice(self.allocator, "        }\n");
+        try output.appendSlice(self.allocator, "    }\n");
+    }
+
+    /// Generate relation loader methods
+    fn generateRelationLoaderMethods(self: *Generator, model: *const PrismaModel) CodeGenError!void {
+        for (model.fields.items) |*field| {
+            if (isFieldRelation(field, self.schema)) {
+                if (field.type.isArray()) {
+                    try self.generateArrayRelationLoader(model, field);
+                } else {
+                    try self.generateSingularRelationLoader(model, field);
+                }
+            }
+        }
+    }
+
+    /// Generate loader for singular relations (e.g., loadRestaurant)
+    fn generateSingularRelationLoader(self: *Generator, model: *const PrismaModel, field: *const Field) CodeGenError!void {
+        _ = model; // will be used for finding foreign key fields
+        var output = &self.output;
+        const relation_model_name = field.type.getModelName().?;
+        const escaped_field_name = try escapeFieldName(self.allocator, field.name);
+        defer if (needsEscape(field.name)) self.allocator.free(escaped_field_name);
+        
+        // Get the foreign key field name from @relation attribute
+        const relation_attr = field.getRelationAttribute();
+        if (relation_attr == null) {
+            // No @relation attribute, skip this relation
+            return;
+        }
+        
+        const fields_array = relation_attr.?.fields orelse return;
+        if (fields_array.len == 0) return;
+        const fk_field_name = fields_array[0].value;
+        
+        // Generate non-cached loader
+        try output.writer(self.allocator).print("\n    /// Load {s} relation (non-cached)\n", .{field.name});
+        
+        const capitalized_name = try self.capitalizeFirst(field.name);
+        defer self.allocator.free(capitalized_name);
+        
+        try output.writer(self.allocator).print("    pub fn load{s}(self: *const @This(), client: *PrismaClient, allocator: std.mem.Allocator) !?{s} {{\n", .{
+            capitalized_name,
+            relation_model_name,
+        });
+        
+        // Check if foreign key is null
+        try output.writer(self.allocator).print("        if (self.{s}) |fk| {{\n", .{fk_field_name});
+        try output.writer(self.allocator).print("            return try {s}.findUnique(client, allocator, fk, .{{}});\n", .{relation_model_name});
+        try output.appendSlice(self.allocator, "        }\n");
+        try output.appendSlice(self.allocator, "        return null;\n");
+        try output.appendSlice(self.allocator, "    }\n");
+        
+        // Generate cached loader
+        try output.writer(self.allocator).print("\n    /// Load {s} relation (cached)\n", .{field.name});
+        try output.writer(self.allocator).print("    pub fn load{s}Cached(self: *@This(), client: *PrismaClient) !?{s} {{\n", .{
+            capitalized_name,
+            relation_model_name,
+        });
+        
+        // Check if already cached
+        try output.writer(self.allocator).print("        if (self._cached_{s}) |cached| {{\n", .{escaped_field_name});
+        try output.appendSlice(self.allocator, "            return cached;\n");
+        try output.appendSlice(self.allocator, "        }\n");
+        
+        // Check if allocator is set
+        try output.appendSlice(self.allocator, "        const alloc = self._allocator orelse return error.AllocatorNotSet;\n");
+        
+        // Load and cache
+        try output.writer(self.allocator).print("        const result = try self.load{s}(client, alloc);\n", .{capitalized_name});
+        try output.writer(self.allocator).print("        self._cached_{s} = result;\n", .{escaped_field_name});
+        try output.appendSlice(self.allocator, "        return result;\n");
+        try output.appendSlice(self.allocator, "    }\n");
+    }
+
+    /// Generate loader for array relations (e.g., loadUserRoles)
+    fn generateArrayRelationLoader(self: *Generator, model: *const PrismaModel, field: *const Field) CodeGenError!void {
+        _ = model; // will be used for reverse foreign key lookup
+        var output = &self.output;
+        const relation_model_name = field.type.getModelName().?;
+        const escaped_field_name = try escapeFieldName(self.allocator, field.name);
+        defer if (needsEscape(field.name)) self.allocator.free(escaped_field_name);
+        
+        // For array relations, we need to find the reverse foreign key
+        // This will be implemented in step 10 (inverse relation metadata)
+        // For now, generate a placeholder
+        
+        const capitalized_name = try self.capitalizeFirst(field.name);
+        defer self.allocator.free(capitalized_name);
+        
+        try output.writer(self.allocator).print("\n    /// Load {s} relation (non-cached)\n", .{field.name});
+        try output.writer(self.allocator).print("    pub fn load{s}(self: *const @This(), client: *PrismaClient, allocator: std.mem.Allocator) ![] {s} {{\n", .{
+            capitalized_name,
+            relation_model_name,
+        });
+        try output.appendSlice(self.allocator, "        // TODO: Implement array relation loading with reverse foreign key\n");
+        try output.appendSlice(self.allocator, "        _ = client;\n");
+        try output.appendSlice(self.allocator, "        _ = allocator;\n");
+        try output.appendSlice(self.allocator, "        _ = self;\n");
+        try output.appendSlice(self.allocator, "        return error.NotImplemented;\n");
+        try output.appendSlice(self.allocator, "    }\n");
+        
+        // Generate cached loader
+        try output.writer(self.allocator).print("\n    /// Load {s} relation (cached)\n", .{field.name});
+        try output.writer(self.allocator).print("    pub fn load{s}Cached(self: *@This(), client: *PrismaClient) ![] {s} {{\n", .{
+            capitalized_name,
+            relation_model_name,
+        });
+        
+        // Check if already cached
+        try output.writer(self.allocator).print("        if (self._cached_{s}) |cached| {{\n", .{escaped_field_name});
+        try output.appendSlice(self.allocator, "            return cached;\n");
+        try output.appendSlice(self.allocator, "        }\n");
+        
+        // Check if allocator is set
+        try output.appendSlice(self.allocator, "        const alloc = self._allocator orelse return error.AllocatorNotSet;\n");
+        
+        // Load and cache
+        try output.writer(self.allocator).print("        const result = try self.load{s}(client, alloc);\n", .{capitalized_name});
+        try output.writer(self.allocator).print("        self._cached_{s} = result;\n", .{escaped_field_name});
+        try output.appendSlice(self.allocator, "        return result;\n");
+        try output.appendSlice(self.allocator, "    }\n");
+    }
+
+    /// Helper to capitalize first letter of a string
+    fn capitalizeFirst(self: *Generator, name: []const u8) ![]const u8 {
+        if (name.len == 0) return name;
+        var result = try self.allocator.alloc(u8, name.len);
+        result[0] = std.ascii.toUpper(name[0]);
+        @memcpy(result[1..], name[1..]);
+        return result;
     }
 
     /// Generate WHERE clause types for type-safe querying
@@ -383,6 +590,57 @@ pub const Generator = struct {
         try output.appendSlice(self.allocator, "    gt: ?f64 = null,\n");
         try output.appendSlice(self.allocator, "    gte: ?f64 = null,\n");
         try output.appendSlice(self.allocator, "};\n\n");
+    }
+
+    /// Generate Include types for each model for eager loading
+    fn generateIncludeTypes(self: *Generator) CodeGenError!void {
+        var output = &self.output;
+        
+        // Generate Include type for each model
+        for (self.schema.models.items) |*model| {
+            // Count relations
+            var has_relations = false;
+            for (model.fields.items) |*field| {
+                if (isFieldRelation(field, self.schema)) {
+                    has_relations = true;
+                    break;
+                }
+            }
+            
+            if (!has_relations) continue;
+            
+            try output.writer(self.allocator).print("/// Include options for {s} model\n", .{model.name});
+            try output.writer(self.allocator).print("pub const {s}Include = struct {{\n", .{model.name});
+            
+            // Add a field for each relation
+            for (model.fields.items) |*field| {
+                if (isFieldRelation(field, self.schema)) {
+                    const escaped_name = try escapeFieldName(self.allocator, field.name);
+                    defer if (needsEscape(field.name)) self.allocator.free(escaped_name);
+                    
+                    const relation_model_name = field.type.getModelName().?;
+                    
+                    // Add bool flag for the relation
+                    try output.writer(self.allocator).print("    {s}: bool = false,\n", .{escaped_name});
+                    
+                    // Add nested include option for singular relations
+                    if (!field.type.isArray()) {
+                        try output.writer(self.allocator).print("    {s}_include: ?{s}Include = null,\n", .{
+                            escaped_name,
+                            relation_model_name,
+                        });
+                    } else {
+                        // For array relations, also support nested includes
+                        try output.writer(self.allocator).print("    {s}_include: ?{s}Include = null,\n", .{
+                            escaped_name,
+                            relation_model_name,
+                        });
+                    }
+                }
+            }
+            
+            try output.appendSlice(self.allocator, "};\n\n");
+        }
     }
 
     /// Generate the main client struct
@@ -471,6 +729,7 @@ pub const Generator = struct {
                 .boolean => "BooleanFilter",
                 .datetime => "DateTimeFilter",
                 .decimal => "DecimalFilter",
+                .json => "StringFilter", // JSON fields use string filters
                 .model_ref, .model_array => unreachable, // Should be skipped above
             };
 
@@ -551,7 +810,7 @@ pub const Generator = struct {
             if (field.optional) {
                 // Optional field handling
                 switch (field.type) {
-                    .string => {
+                    .string, .json => {
                         try output.writer(self.allocator).print("            record.{s} = try row.getOpt(\"\\\"{s}\\\"\", []const u8);\n", .{ field.name, column_name });
                     },
                     .int => {
@@ -569,7 +828,7 @@ pub const Generator = struct {
             } else {
                 // Non-optional field handling
                 switch (field.type) {
-                    .string => {
+                    .string, .json => {
                         try output.writer(self.allocator).print("            record.{s} = try row.get(\"\\\"{s}\\\"\", []const u8);\n", .{ field.name, column_name });
                     },
                     .int => {
@@ -632,7 +891,7 @@ pub const Generator = struct {
             if (field.optional) {
                 // Optional field handling
                 switch (field.type) {
-                    .string => {
+                    .string, .json => {
                         try output.writer(self.allocator).print("            records[idx].{s} = try row.getOpt(\"\\\"{s}\\\"\", []const u8);\n", .{ field.name, column_name });
                     },
                     .int => {
@@ -650,7 +909,7 @@ pub const Generator = struct {
             } else {
                 // Non-optional field handling
                 switch (field.type) {
-                    .string => {
+                    .string, .json => {
                         try output.writer(self.allocator).print("            records[idx].{s} = try row.get(\"\\\"{s}\\\"\", []const u8);\n", .{ field.name, column_name });
                     },
                     .int => {
@@ -765,7 +1024,7 @@ pub const Generator = struct {
 
             if (field.optional) {
                 switch (field.type) {
-                    .string => {
+                    .string, .json => {
                         try output.writer(self.allocator).print("            record.{s} = try row.getOpt(\"\\\"{s}\\\"\", []const u8);\n", .{ field.name, column_name });
                     },
                     .int => {
@@ -782,7 +1041,7 @@ pub const Generator = struct {
                 }
             } else {
                 switch (field.type) {
-                    .string => {
+                    .string, .json => {
                         try output.writer(self.allocator).print("            record.{s} = try row.get(\"\\\"{s}\\\"\", []const u8);\n", .{ field.name, column_name });
                     },
                     .int => {

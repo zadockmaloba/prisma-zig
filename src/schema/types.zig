@@ -15,6 +15,7 @@ pub const FieldType = union(enum) {
     boolean,
     datetime,
     decimal,
+    json,
 
     // Model references
     model_ref: []const u8, // e.g., "User"
@@ -29,6 +30,7 @@ pub const FieldType = union(enum) {
         if (std.mem.eql(u8, type_str, "Boolean")) return .boolean;
         if (std.mem.eql(u8, type_str, "DateTime")) return .datetime;
         if (std.mem.eql(u8, type_str, "Decimal")) return .decimal;
+        if (std.mem.eql(u8, type_str, "Json")) return .json;
 
         // Check for array type (ends with [])
         if (std.mem.endsWith(u8, type_str, "[]")) {
@@ -52,6 +54,7 @@ pub const FieldType = union(enum) {
             .boolean => "BOOLEAN",
             .datetime => "TIMESTAMP",
             .decimal => "DECIMAL",
+            .json => "JSONB",
             .model_ref => "INTEGER", // Foreign key as integer
             .model_array => "", // Arrays don't have direct SQL representation (handled via relations)
         };
@@ -66,6 +69,7 @@ pub const FieldType = union(enum) {
             .boolean => "bool",
             .datetime => "i64", // Unix timestamp
             .decimal => "f64", // Use f64 for decimal values
+            .json => "Json", // JSON string representation
             .model_ref => |model_name| model_name, // Use the model name as type
             .model_array => |model_name| model_name, // Will be handled specially in codegen
         };
