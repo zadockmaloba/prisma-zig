@@ -442,12 +442,21 @@ pub const Field = struct {
     }
 };
 
+/// Represents an inverse relation (for array relation loaders)
+pub const InverseRelation = struct {
+    from_model: []const u8, // The model that has the foreign key
+    from_field: []const u8, // The field name on the from_model (e.g., "restaurantId")
+    to_field: []const u8, // The field name on this model that's referenced (e.g., "id")
+    relation_name: []const u8, // Plural name for array (e.g., "users" if User has restaurantId)
+};
+
 /// Represents a Prisma model
 pub const PrismaModel = struct {
     name: []const u8,
     fields: std.ArrayList(Field),
     indexes: std.ArrayList(String),
     table_name: ?[]const u8, // From @@map attribute
+    inverse_relations: std.ArrayList(InverseRelation), // Relations pointing TO this model
     allocator: std.mem.Allocator,
 
     pub fn init(allocator: std.mem.Allocator, name: []const u8) !PrismaModel {
@@ -457,6 +466,7 @@ pub const PrismaModel = struct {
             .fields = .empty,
             .indexes = .empty,
             .table_name = null,
+            .inverse_relations = .empty,
         };
     }
 
@@ -474,7 +484,15 @@ pub const PrismaModel = struct {
         }
         self.indexes.deinit(self.allocator);
 
+        // free inverse relations (strings are owned by models, no need to free)
+        self.inverse_relations.deinit(self.allocator);
+
         self.fields.deinit(self.allocator);
+    }
+
+    /// Add an inverse relation (used during schema parsing second pass)
+    pub fn addInverseRelation(self: *PrismaModel, inverse: InverseRelation) !void {
+        try self.inverse_relations.append(self.allocator, inverse);
     }
 
     /// Add a field to the model
