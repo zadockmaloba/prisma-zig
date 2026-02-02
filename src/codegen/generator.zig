@@ -209,10 +209,10 @@ pub const Generator = struct {
                 if (field.type.isArray()) {
                     // For array relations, cache the slice
                     const model_name = field.type.getModelName().?;
-                    try self.output.writer(self.allocator).print("    _cached_{s}: ?[]{s} = null,\n", .{ escaped_name, model_name });
+                    try self.output.writer(self.allocator).print("    _cached_{s}: ?[]{s} = null,\n", .{ field.name, model_name });
                 } else {
                     // For singular relations, cache the model instance
-                    try self.output.writer(self.allocator).print("    _cached_{s}: {s}{s} = null,\n", .{ escaped_name, optional_marker, relation_type });
+                    try self.output.writer(self.allocator).print("    _cached_{s}: {s}{s} = null,\n", .{ field.name, optional_marker, relation_type });
                 }
             }
         }
@@ -424,13 +424,13 @@ pub const Generator = struct {
 
                 if (field.type.isArray()) {
                     // Free array slice
-                    try output.writer(self.allocator).print("{s}if (self._cached_{s}) |cached| {{\n", .{ indent, escaped_name });
+                    try output.writer(self.allocator).print("{s}if (self._cached_{s}) |cached| {{\n", .{ indent, field.name });
                     try output.writer(self.allocator).print("{s}    alloc.free(cached);\n", .{indent});
-                    try output.writer(self.allocator).print("{s}    self._cached_{s} = null;\n", .{ indent, escaped_name });
+                    try output.writer(self.allocator).print("{s}    self._cached_{s} = null;\n", .{ indent, field.name });
                     try output.writer(self.allocator).print("{s}}}\n", .{indent});
                 } else {
                     // For singular relations, just set to null (they're values, not pointers)
-                    try output.writer(self.allocator).print("{s}self._cached_{s} = null;\n", .{ indent, escaped_name });
+                    try output.writer(self.allocator).print("{s}self._cached_{s} = null;\n", .{ indent, field.name });
                 }
             }
         }
@@ -499,7 +499,7 @@ pub const Generator = struct {
         });
 
         // Check if already cached
-        try output.writer(self.allocator).print("        if (self._cached_{s}) |cached| {{\n", .{escaped_field_name});
+        try output.writer(self.allocator).print("        if (self._cached_{s}) |cached| {{\n", .{field.name});
         try output.appendSlice(self.allocator, "            return cached;\n");
         try output.appendSlice(self.allocator, "        }\n");
 
@@ -508,7 +508,7 @@ pub const Generator = struct {
 
         // Load and cache
         try output.writer(self.allocator).print("        const result = try self.load{s}(client, alloc);\n", .{capitalized_name});
-        try output.writer(self.allocator).print("        self._cached_{s} = result;\n", .{escaped_field_name});
+        try output.writer(self.allocator).print("        self._cached_{s} = result;\n", .{field.name});
         try output.appendSlice(self.allocator, "        return result;\n");
         try output.appendSlice(self.allocator, "    }\n");
     }
@@ -580,7 +580,7 @@ pub const Generator = struct {
         });
 
         // Check if already cached
-        try output.writer(self.allocator).print("        if (self._cached_{s}) |cached| {{\n", .{escaped_field_name});
+        try output.writer(self.allocator).print("        if (self._cached_{s}) |cached| {{\n", .{field.name});
         try output.appendSlice(self.allocator, "            return cached;\n");
         try output.appendSlice(self.allocator, "        }\n");
 
@@ -589,7 +589,7 @@ pub const Generator = struct {
 
         // Load and cache
         try output.writer(self.allocator).print("        const result = try self.load{s}(client, alloc);\n", .{capitalized_name});
-        try output.writer(self.allocator).print("        self._cached_{s} = result;\n", .{escaped_field_name});
+        try output.writer(self.allocator).print("        self._cached_{s} = result;\n", .{field.name});
         try output.appendSlice(self.allocator, "        return result;\n");
         try output.appendSlice(self.allocator, "    }\n");
     }
