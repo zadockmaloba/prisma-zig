@@ -99,6 +99,9 @@ pub const Generator = struct {
         // Generate where clause types
         try self.generateWhereTypes();
 
+        // Generate Include types for eager loading
+        try self.generateIncludeTypes();
+
         // Generate client struct with CRUD operations
         try self.generateClientStruct();
 

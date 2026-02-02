@@ -56,7 +56,25 @@ pub const FieldType = union(enum) {
             .decimal => "DECIMAL",
             .json => "JSONB",
             .model_ref => "INTEGER", // Foreign key as integer
-            .model_array => "", // Arrays don't have direct SQL representation (handled via relations)
+            .model_array => |full_name| {
+                // Handle scalar arrays with PostgreSQL array syntax
+                const base_name = if (std.mem.endsWith(u8, full_name, "[]"))
+                    full_name[0 .. full_name.len - 2]
+                else
+                    full_name;
+
+                // Map scalar types to their PostgreSQL array equivalents
+                if (std.mem.eql(u8, base_name, "String")) return "TEXT[]";
+                if (std.mem.eql(u8, base_name, "Int")) return "INTEGER[]";
+                if (std.mem.eql(u8, base_name, "Float")) return "DOUBLE PRECISION[]";
+                if (std.mem.eql(u8, base_name, "Boolean")) return "BOOLEAN[]";
+                if (std.mem.eql(u8, base_name, "DateTime")) return "TIMESTAMP[]";
+                if (std.mem.eql(u8, base_name, "Decimal")) return "DECIMAL[]";
+                if (std.mem.eql(u8, base_name, "Json")) return "JSONB[]";
+
+                // Model arrays don't have direct SQL representation (handled via relations)
+                return "";
+            },
         };
     }
 
