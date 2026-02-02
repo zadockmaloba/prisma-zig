@@ -695,7 +695,7 @@ pub const Generator = struct {
                     // Add nested include option for singular relations
                     if (!field.type.isArray()) {
                         try output.writer(self.allocator).print("    {s}_include: ?{s}Include = null,\n", .{
-                            escaped_name,
+                            field.name,
                             relation_model_name,
                         });
                     } else {
