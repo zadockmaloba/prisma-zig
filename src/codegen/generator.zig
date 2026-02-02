@@ -1047,10 +1047,12 @@ pub const Generator = struct {
             const rel_model_name = field.type.getModelName() orelse continue;
             const related_model = self.schema.getModel(rel_model_name);
             if (related_model == null) continue;
+            const escaped_name = try escapeFieldName(self.allocator, field.name);
+            defer if (needsEscape(field.name)) self.allocator.free(escaped_name);
 
             if (field.type == .model_ref) {
                 // Singular relation - parse prefixed columns
-                try output.writer(self.allocator).print("                if (inc.{s}) {{\n", .{field.name});
+                try output.writer(self.allocator).print("                if (inc.{s}) {{\n", .{escaped_name});
                 try output.writer(self.allocator).print("                    // Try to parse {s} relation from prefixed columns\n", .{field.name});
                 try output.writer(self.allocator).print("                    const {s}_id_col = try row.getOpt(\"{s}_id\", []const u8);\n", .{ field.name, field.name });
                 try output.writer(self.allocator).print("                    if ({s}_id_col) |_| {{\n", .{field.name});
