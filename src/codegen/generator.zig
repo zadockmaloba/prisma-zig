@@ -79,6 +79,16 @@ pub const Generator = struct {
         self.output.deinit(self.allocator);
     }
 
+    /// Check if a type name refers to an enum rather than a model
+    fn isEnumType(self: *const Generator, type_name: []const u8) bool {
+        for (self.schema.enums.items) |*prisma_enum| {
+            if (std.mem.eql(u8, prisma_enum.name, type_name)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /// Generate complete client code for all models in the schema
     pub fn generateClient(self: *Generator) CodeGenError![]u8 {
         // Generate file header
@@ -630,10 +640,14 @@ pub const Generator = struct {
                 }
             }
 
-            if (!has_relations) continue;
-
             try output.writer(self.allocator).print("/// Include options for {s} model\n", .{model.name});
             try output.writer(self.allocator).print("pub const {s}Include = struct {{\n", .{model.name});
+
+            if (!has_relations) {
+                // Generate empty struct for models without relations
+                try output.appendSlice(self.allocator, "};\n\n");
+                continue;
+            }
 
             // Add a field for each relation
             for (model.fields.items) |*field| {
@@ -876,19 +890,271 @@ pub const Generator = struct {
         try output.appendSlice(self.allocator, "    }\n\n");
     }
 
+    /// Helper to generate JOIN SQL with json_agg for relations
+    /// This generates runtime Zig code that builds JOIN queries based on include options
+    fn generateJoinQueryBuilder(self: *Generator, model: *const PrismaModel, include_var: []const u8) CodeGenError!void {
+        var output = &self.output;
+        const table_name = try model.getTableName(self.allocator);
+        defer if (table_name.heap_allocated) self.allocator.free(table_name.value);
+
+        // Find all relations in this model
+        var has_relations = false;
+        for (model.fields.items) |*field| {
+            if (field.type.isRelation()) {
+                has_relations = true;
+                break;
+            }
+        }
+
+        if (!has_relations) return;
+
+        try output.appendSlice(self.allocator, "            // Build relation subqueries\n");
+
+        for (model.fields.items) |*field| {
+            if (!field.type.isRelation()) continue;
+
+            const rel_model_name = field.type.getModelName() orelse continue;
+
+            // Get the related model to find its table name
+            const related_model = self.schema.getModel(rel_model_name);
+            if (related_model == null) continue;
+
+            const rel_table_name = try related_model.?.getTableName(self.allocator);
+            defer if (rel_table_name.heap_allocated) self.allocator.free(rel_table_name.value);
+
+            if (field.type == .model_ref) {
+                const rel_attr = field.getRelationAttribute() orelse continue;
+                // Singular relation - use LEFT JOIN
+                try output.writer(self.allocator).print("        if ({s}.{s}) {{\n", .{ include_var, field.name });
+
+                // Get foreign key and primary key from @relation attribute
+                if (rel_attr.fields != null and rel_attr.references != null and
+                    rel_attr.fields.?.len > 0 and rel_attr.references.?.len > 0)
+                {
+                    const fk_field = rel_attr.fields.?[0].value;
+                    const pk_field = rel_attr.references.?[0].value;
+
+                    // Find the foreign key column name
+                    var fk_column_name: []const u8 = fk_field;
+                    for (model.fields.items) |*fld| {
+                        if (std.mem.eql(u8, fld.name, fk_field)) {
+                            fk_column_name = fld.getColumnName();
+                            break;
+                        }
+                    }
+
+                    // Find the primary key column name in related model
+                    var pk_column_name: []const u8 = pk_field;
+                    for (related_model.?.fields.items) |*fld| {
+                        if (std.mem.eql(u8, fld.name, pk_field)) {
+                            pk_column_name = fld.getColumnName();
+                            break;
+                        }
+                    }
+
+                    // Generate SELECT list for related table columns
+                    try output.writer(self.allocator).print("            _ = try query_builder.sql(\" , \");\n", .{});
+
+                    var first_col = true;
+                    for (related_model.?.fields.items) |*rel_field| {
+                        if (rel_field.type.isRelation()) continue;
+
+                        if (!first_col) {
+                            try output.appendSlice(self.allocator, "            _ = try query_builder.sql(\", \");\n");
+                        }
+                        first_col = false;
+
+                        const rel_col = rel_field.getColumnName();
+                        try output.writer(self.allocator).print("            _ = try query_builder.sql(\"{s}_{s}.\\\"{s}\\\" AS {s}_{s}\");\n", .{ field.name, rel_table_name.value, rel_col, field.name, rel_field.name });
+                    }
+
+                    // Store the JOIN clause for later
+                    try output.writer(self.allocator).print("            join_clauses_list[join_count] = try std.fmt.allocPrint(self.allocator, \" LEFT JOIN \\\"{s}\\\" AS {s}_{s} ON \\\"{s}\\\".\\\"{s}\\\" = {s}_{s}.\\\"{s}\\\"\", .{{}});\n", .{ rel_table_name.value, field.name, rel_table_name.value, table_name.value, fk_column_name, field.name, rel_table_name.value, pk_column_name });
+                    try output.appendSlice(self.allocator, "            join_count += 1;\n");
+                }
+
+                try output.appendSlice(self.allocator, "        }\n");
+            } else if (field.type == .model_array) {
+                // Array relation - use json_agg with LATERAL JOIN
+                try output.writer(self.allocator).print("        if ({s}.{s}) {{\n", .{ include_var, field.name });
+
+                // For array relations, we need the reverse foreign key
+                // This requires inverse relation metadata (Step 10)
+                // For now, generate a TODO placeholder that will work once Step 10 is complete
+
+                try output.writer(self.allocator).print("            // TODO: Array relation for {s} - requires inverse relation metadata from Step 10\n", .{field.name});
+                try output.writer(self.allocator).print("            _ = try query_builder.sql(\" , (SELECT COALESCE(json_agg(row_to_json(t)), '[]'::json) FROM \\\"{s}\\\" t WHERE t.{s}_id = \\\"{s}\\\".id) AS {s}_json\");\n", .{ rel_table_name.value, table_name.value, table_name.value, field.name });
+
+                try output.appendSlice(self.allocator, "        }\n");
+            }
+        }
+    }
+
+    /// Helper to generate code that parses included relations from query results
+    /// Generates Zig code that extracts prefixed columns and parses JSON arrays
+    fn generateIncludedRelationParsing(self: *Generator, model: *const PrismaModel, include_var: []const u8, record_var: []const u8) CodeGenError!void {
+        var output = &self.output;
+
+        // Find all relations in this model
+        var has_relations = false;
+        for (model.fields.items) |*field| {
+            if (field.type.isRelation()) {
+                has_relations = true;
+                break;
+            }
+        }
+
+        if (!has_relations) return;
+
+        try output.writer(self.allocator).print("            // Parse included relations\n", .{});
+        try output.writer(self.allocator).print("            if ({s}) |inc| {{\n", .{include_var});
+
+        for (model.fields.items) |*field| {
+            if (!field.type.isRelation()) continue;
+
+            const rel_model_name = field.type.getModelName() orelse continue;
+            const related_model = self.schema.getModel(rel_model_name);
+            if (related_model == null) continue;
+
+            if (field.type == .model_ref) {
+                // Singular relation - parse prefixed columns
+                try output.writer(self.allocator).print("                if (inc.{s}) {{\n", .{field.name});
+                try output.writer(self.allocator).print("                    // Try to parse {s} relation from prefixed columns\n", .{field.name});
+                try output.writer(self.allocator).print("                    const {s}_id_col = try row.getOpt(\"{s}_id\", []const u8);\n", .{ field.name, field.name });
+                try output.writer(self.allocator).print("                    if ({s}_id_col) |_| {{\n", .{field.name});
+
+                // Build the related model instance from prefixed columns
+                try output.writer(self.allocator).print("                        var related: {s} = undefined;\n", .{rel_model_name});
+
+                for (related_model.?.fields.items) |*rel_field| {
+                    if (rel_field.type.isRelation()) continue;
+
+                    const prefixed_col = try std.fmt.allocPrint(self.allocator, "{s}_{s}", .{ field.name, rel_field.name });
+                    defer self.allocator.free(prefixed_col);
+
+                    if (rel_field.optional) {
+                        switch (rel_field.type) {
+                            .string, .json => {
+                                try output.writer(self.allocator).print("                        related.{s} = try row.getOpt(\"{s}\", []const u8);\n", .{ rel_field.name, prefixed_col });
+                            },
+                            .int => {
+                                try output.writer(self.allocator).print("                        related.{s} = try row.getOpt(\"{s}\", i32);\n", .{ rel_field.name, prefixed_col });
+                            },
+                            .boolean => {
+                                try output.writer(self.allocator).print("                        related.{s} = try row.getOpt(\"{s}\", bool);\n", .{ rel_field.name, prefixed_col });
+                            },
+                            .datetime => {
+                                try output.writer(self.allocator).print("                        const {s}_{s}_str = try row.getOpt(\"{s}\", []const u8);\n", .{ field.name, rel_field.name, prefixed_col });
+                                try output.writer(self.allocator).print("                        related.{s} = if ({s}_{s}_str) |str| try dt.unixTimeFromISO8601(str) else null;\n", .{ rel_field.name, field.name, rel_field.name });
+                            },
+                            else => {},
+                        }
+                    } else {
+                        switch (rel_field.type) {
+                            .string, .json => {
+                                try output.writer(self.allocator).print("                        related.{s} = try row.get(\"{s}\", []const u8);\n", .{ rel_field.name, prefixed_col });
+                            },
+                            .int => {
+                                try output.writer(self.allocator).print("                        related.{s} = try row.get(\"{s}\", i32);\n", .{ rel_field.name, prefixed_col });
+                            },
+                            .boolean => {
+                                try output.writer(self.allocator).print("                        related.{s} = try row.get(\"{s}\", bool);\n", .{ rel_field.name, prefixed_col });
+                            },
+                            .datetime => {
+                                try output.writer(self.allocator).print("                        related.{s} = try dt.unixTimeFromISO8601(try row.get(\"{s}\", []const u8));\n", .{ rel_field.name, prefixed_col });
+                            },
+                            else => {},
+                        }
+                    }
+                }
+
+                // Cache the relation if allocator is set
+                try output.writer(self.allocator).print("                        {s}._cached_{s} = related;\n", .{ record_var, field.name });
+                try output.writer(self.allocator).print("                    }}\n", .{});
+                try output.appendSlice(self.allocator, "                }\n");
+            } else if (field.type == .model_array) {
+                // Array relation - parse JSON
+                try output.writer(self.allocator).print("                if (inc.{s}) {{\n", .{field.name});
+                try output.writer(self.allocator).print("                    // Parse {s} array relation from JSON\n", .{field.name});
+                try output.writer(self.allocator).print("                    const json_col = try row.getOpt(\"{s}_json\", []const u8);\n", .{field.name});
+                try output.appendSlice(self.allocator, "                    if (json_col) |json_text| {\n");
+                try output.appendSlice(self.allocator, "                        // TODO: Parse JSON array and populate cache\n");
+                try output.appendSlice(self.allocator, "                        // Requires std.json parsing implementation\n");
+                try output.appendSlice(self.allocator, "                        _ = json_text;\n");
+                try output.appendSlice(self.allocator, "                    }\n");
+                try output.appendSlice(self.allocator, "                }\n");
+            }
+        }
+
+        try output.appendSlice(self.allocator, "            }\n");
+    }
+
     /// Generate FIND_MANY operation
     fn generateFindManyOperation(self: *Generator, model: *const PrismaModel) CodeGenError!void {
         var output = &self.output;
         const table_name = try model.getTableName(self.allocator);
         defer if (table_name.heap_allocated) self.allocator.free(table_name.value);
 
+        // Check if model has relations and singular relations
+        var has_relations = false;
+        var has_singular_relations = false;
+        for (model.fields.items) |*field| {
+            if (field.type.isRelation()) {
+                // Check if this is actually a model relation, not an enum
+                if (field.type == .model_ref) {
+                    const ref_name = field.type.model_ref;
+                    if (!self.isEnumType(ref_name)) {
+                        has_relations = true;
+                        has_singular_relations = true;
+                    }
+                } else {
+                    // model_array type
+                    has_relations = true;
+                }
+            }
+        }
+
         try output.writer(self.allocator).print("    /// Find multiple {s} records\n", .{model.name});
-        try output.writer(self.allocator).print("    pub fn findMany(self: *@This(), options: struct {{ where: ?{s}Where = null }}) ![]{s} {{\n", .{ model.name, model.name });
+        if (has_relations) {
+            try output.writer(self.allocator).print("    pub fn findMany(self: *@This(), options: struct {{ where: ?{s}Where = null, include: ?{s}Include = null }}) ![]{s} {{\n", .{ model.name, model.name, model.name });
+        } else {
+            try output.writer(self.allocator).print("    pub fn findMany(self: *@This(), options: struct {{ where: ?{s}Where = null, include: ?{s}Include = null }}) ![]{s} {{\n", .{ model.name, model.name, model.name });
+        }
 
         try output.writer(self.allocator).print("        var query_builder = QueryBuilder.init(self.allocator);\n", .{});
-        try output.appendSlice(self.allocator, "        defer query_builder.deinit();\n");
+        try output.appendSlice(self.allocator, "        defer query_builder.deinit();\n\n");
 
-        try output.writer(self.allocator).print("        _ = try query_builder.sql(\"SELECT * FROM \\\"{s}\\\"\");\n", .{table_name.value});
+        if (has_singular_relations) {
+            // Only prepare JOIN infrastructure if there are singular relations
+            try output.appendSlice(self.allocator, "        // Prepare JOIN clauses array\n");
+            try output.appendSlice(self.allocator, "        var join_clauses_buf: [16][]const u8 = undefined;\n");
+            try output.appendSlice(self.allocator, "        var join_clauses_list = join_clauses_buf[0..];\n");
+            try output.appendSlice(self.allocator, "        var join_count: usize = 0;\n");
+            try output.appendSlice(self.allocator, "        defer {\n");
+            try output.appendSlice(self.allocator, "            for (join_clauses_list[0..join_count]) |clause| {\n");
+            try output.appendSlice(self.allocator, "                self.allocator.free(clause);\n");
+            try output.appendSlice(self.allocator, "            }\n");
+            try output.appendSlice(self.allocator, "        }\n\n");
+        }
+
+        try output.appendSlice(self.allocator, "        if (options.include) |inc| {\n");
+        if (!has_relations) {
+            // Suppress unused variable warning for models with no relations
+            try output.appendSlice(self.allocator, "            _ = inc;\n");
+        }
+        try output.writer(self.allocator).print("            _ = try query_builder.sql(\"SELECT \\\"{s}\\\".* \");\n", .{table_name.value});
+        try self.generateJoinQueryBuilder(model, "inc");
+        try output.appendSlice(self.allocator, "            _ = try query_builder.sql(\" FROM \");\n");
+        try output.writer(self.allocator).print("            _ = try query_builder.sql(\"\\\"{s}\\\"\");\n", .{table_name.value});
+        if (has_singular_relations) {
+            try output.appendSlice(self.allocator, "            // Add JOIN clauses\n");
+            try output.appendSlice(self.allocator, "            for (join_clauses_list[0..join_count]) |clause| {\n");
+            try output.appendSlice(self.allocator, "                _ = try query_builder.sql(clause);\n");
+            try output.appendSlice(self.allocator, "            }\n");
+        }
+        try output.appendSlice(self.allocator, "        } else {\n");
+        try output.writer(self.allocator).print("            _ = try query_builder.sql(\"SELECT * FROM \\\"{s}\\\"\");\n", .{table_name.value});
+        try output.appendSlice(self.allocator, "        }\n");
 
         try output.appendSlice(self.allocator, "        if (options.where) |where_clause| {\n");
         try output.appendSlice(self.allocator, "            // TODO: Build WHERE clause from where_clause\n");
@@ -950,6 +1216,11 @@ pub const Generator = struct {
             }
         }
 
+        // Parse included relations if present
+        if (has_relations) {
+            try self.generateIncludedRelationParsing(model, "options.include", "records[idx]");
+        }
+
         try output.appendSlice(self.allocator, "        }\n\n");
         try output.appendSlice(self.allocator, "        return records;\n");
         try output.appendSlice(self.allocator, "    }\n\n");
@@ -961,12 +1232,63 @@ pub const Generator = struct {
         const table_name = try model.getTableName(self.allocator);
         defer if (table_name.heap_allocated) self.allocator.free(table_name.value);
 
+        // Check if model has relations and singular relations
+        var has_relations = false;
+        var has_singular_relations = false;
+        for (model.fields.items) |*field| {
+            if (field.type.isRelation()) {
+                // Check if this is actually a model relation, not an enum
+                if (field.type == .model_ref) {
+                    const ref_name = field.type.model_ref;
+                    if (!self.isEnumType(ref_name)) {
+                        has_relations = true;
+                        has_singular_relations = true;
+                    }
+                } else {
+                    // model_array type
+                    has_relations = true;
+                }
+            }
+        }
+
         try output.writer(self.allocator).print("    /// Find a unique {s} record\n", .{model.name});
-        try output.writer(self.allocator).print("    pub fn findUnique(self: *@This(), options: struct {{ where: {s}Where }}) !?{s} {{\n", .{ model.name, model.name });
+        try output.writer(self.allocator).print("    pub fn findUnique(self: *@This(), options: struct {{ where: {s}Where, include: ?{s}Include = null }}) !?{s} {{\n", .{ model.name, model.name, model.name });
 
         try output.appendSlice(self.allocator, "        var query_builder = QueryBuilder.init(self.allocator);\n");
         try output.appendSlice(self.allocator, "        defer query_builder.deinit();\n");
-        try output.writer(self.allocator).print("        _ = try query_builder.sql(\"SELECT * FROM \\\"{s}\\\" WHERE \");\n", .{table_name.value});
+
+        // With include support - only prepare JOIN infrastructure if there are singular relations
+        if (has_singular_relations) {
+            try output.appendSlice(self.allocator, "        \n        // Prepare JOIN clauses array\n");
+            try output.appendSlice(self.allocator, "        var join_clauses_buf: [16][]const u8 = undefined;\n");
+            try output.appendSlice(self.allocator, "        var join_clauses_list = join_clauses_buf[0..];\n");
+            try output.appendSlice(self.allocator, "        var join_count: usize = 0;\n");
+            try output.appendSlice(self.allocator, "        defer {\n");
+            try output.appendSlice(self.allocator, "            for (join_clauses_list[0..join_count]) |clause| {\n");
+            try output.appendSlice(self.allocator, "                self.allocator.free(clause);\n");
+            try output.appendSlice(self.allocator, "            }\n");
+            try output.appendSlice(self.allocator, "        }\n\n");
+        }
+
+        try output.writer(self.allocator).print("        if (options.include) |inc| {{\n", .{});
+        if (!has_relations) {
+            // Suppress unused variable warning for models with no relations
+            try output.appendSlice(self.allocator, "            _ = inc;\n");
+        }
+        try output.writer(self.allocator).print("            _ = try query_builder.sql(\"SELECT \\\"{s}\\\".* \");\n", .{table_name.value});
+        try self.generateJoinQueryBuilder(model, "inc");
+        try output.appendSlice(self.allocator, "            _ = try query_builder.sql(\" FROM \");\n");
+        try output.writer(self.allocator).print("            _ = try query_builder.sql(\"\\\"{s}\\\"\");\n", .{table_name.value});
+        if (has_singular_relations) {
+            try output.appendSlice(self.allocator, "            // Add JOIN clauses\n");
+            try output.appendSlice(self.allocator, "            for (join_clauses_list[0..join_count]) |clause| {\n");
+            try output.appendSlice(self.allocator, "                _ = try query_builder.sql(clause);\n");
+            try output.appendSlice(self.allocator, "            }\n");
+        }
+        try output.appendSlice(self.allocator, "            _ = try query_builder.sql(\" WHERE \");\n");
+        try output.appendSlice(self.allocator, "        } else {\n");
+        try output.writer(self.allocator).print("            _ = try query_builder.sql(\"SELECT * FROM \\\"{s}\\\" WHERE \");\n", .{table_name.value});
+        try output.appendSlice(self.allocator, "        }\n");
 
         try output.appendSlice(self.allocator, "        var first_condition = true;\n\n");
 
@@ -1080,6 +1402,11 @@ pub const Generator = struct {
                     else => {},
                 }
             }
+        }
+
+        // Parse included relations if present
+        if (has_relations) {
+            try self.generateIncludedRelationParsing(model, "options.include", "record");
         }
 
         try output.appendSlice(self.allocator, "            return record;\n");
