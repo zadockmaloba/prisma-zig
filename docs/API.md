@@ -317,35 +317,41 @@ if (user) |*u| {
 
 #### Array Relations (One-to-Many)
 
-**Note:** Array relation loaders are currently placeholders returning `error.NotImplemented`. Full implementation requires inverse relation metadata (in development).
-
-**Generated Methods:**
+**Non-Cached Loader:**
 ```zig
 pub fn loadUserRoles(
     self: *const @This(),
     client: *PrismaClient,
     allocator: std.mem.Allocator
 ) ![]UserRole
+```
 
+**Cached Loader:**
+```zig
 pub fn loadUserRolesCached(
     self: *@This(),
     client: *PrismaClient
 ) ![]UserRole
 ```
 
-**Future Usage:**
+**Current Status:** Array relation loaders detect the reverse foreign key (e.g., `userId` in `UserRole` table) but currently return `error.NotImplemented` pending WHERE clause support in `findMany`. The infrastructure is in place, with inverse relation metadata stored during schema parsing.
+
+**Detected Foreign Keys:**
 ```zig
 const user = try client.user.findUnique(.{...});
 if (user) |u| {
-    // Will query: SELECT * FROM user_roles WHERE user_id = u.id
+    // Generator knows this should query: 
+    // SELECT * FROM user_roles WHERE userId = u.id
     const roles = try u.loadUserRoles(&client, allocator);
-    defer allocator.free(roles);
-    
-    for (roles) |role| {
-        std.debug.print("Role: {s}\n", .{role.name});
-    }
+    // Returns error.NotImplemented for now
 }
 ```
+
+**When Fully Implemented:**
+- Will automatically query related records using detected foreign key
+- Non-cached version returns caller-owned slice
+- Cached version stores result in `_cached_userRoles` field
+- Memory management follows same pattern as singular relations
 
 ### Cache Management
 
@@ -409,45 +415,165 @@ if (user) |*u| {
 defer arena_allocator.deinit();
 ```
 
-### Include Types (Prepared for Future Use)
+### Eager Loading with Include Options
 
-Each model with relations has a generated Include type for eager loading:
+Each model with relations has a generated Include type for eager loading relations in a single query using JOINs.
+
+#### Include Types
 
 ```zig
 pub const UserInclude = struct {
     restaurant: bool = false,
-    restaurant_include: ?RestaurantInclude = null,
     userRoles: bool = false,
-    userRoles_include: ?UserRoleInclude = null,
+};
+
+pub const RestaurantInclude = struct {
+    country: bool = false,
+    owner: bool = false,
+    users: bool = false,
 };
 ```
 
-**Future Usage (when JOIN support is implemented):**
+#### Basic Include Usage
+
+**Load singular relation:**
 ```zig
-// This syntax is prepared but not yet functional
 const user = try client.user.findUnique(.{
     .where = .{ .id = .{ .equals = user_id } },
+    .include = .{ .restaurant = true },
+});
+
+if (user) |u| {
+    // Restaurant is automatically loaded and cached
+    if (u._cached_restaurant) |restaurant| {
+        std.debug.print("User works at: {s}\n", .{restaurant.name});
+    }
+}
+```
+
+**Load multiple relations:**
+```zig
+const user = try client.user.findMany(.{
+    .where = null,
     .include = .{
         .restaurant = true,
+        .profile = true,
         .userRoles = true,
     },
 });
-// Will load user with restaurant and roles in single query
+
+for (user) |u| {
+    if (u._cached_restaurant) |restaurant| {
+        std.debug.print("{s} at {s}\n", .{u.email, restaurant.name});
+    }
+    
+    if (u._cached_userRoles) |roles| {
+        for (roles) |role| {
+            std.debug.print("  - {s}\n", .{role.name});
+        }
+    }
+}
 ```
 
-**Nested Includes (Future):**
+#### SQL Implementation Details
+
+**Singular Relations (LEFT JOIN):**
+When you include a singular relation, the generator produces a `LEFT JOIN` query:
+
+```sql
+SELECT 
+    "users".*, 
+    restaurant_restaurants."id" AS restaurant_id,
+    restaurant_restaurants."name" AS restaurant_name,
+    restaurant_restaurants."countryId" AS restaurant_countryId
+    -- ... more aliased columns
+FROM "users"
+LEFT JOIN "restaurants" AS restaurant_restaurants 
+    ON "users"."restaurantId" = restaurant_restaurants."id"
+WHERE "users"."id" = $1
+```
+
+- Columns are prefixed to avoid conflicts (`restaurant_id`, `restaurant_name`)
+- `LEFT JOIN` handles nullable relations gracefully
+- Related model is parsed from aliased columns and stored in cache
+
+**Array Relations (json_agg subquery):**
+When you include an array relation, a JSON aggregation subquery is used:
+
+```sql
+SELECT 
+    "restaurants".*, 
+    (SELECT COALESCE(json_agg(row_to_json(t)), '[]'::json) 
+     FROM "users" t 
+     WHERE t."restaurantId" = "restaurants"."id") AS users_json
+FROM "restaurants"
+WHERE "restaurants"."id" = $1
+```
+
+- Uses PostgreSQL's `json_agg()` to aggregate related rows
+- `COALESCE` ensures empty array for no matches
+- Keeps result as single row (avoids cartesian product)
+- JSON is parsed and cached as `[]User` slice
+
+#### Performance Characteristics
+
+**Benefits:**
+- Single database round-trip for complex queries
+- Reduced network latency vs N+1 queries
+- Automatic caching of loaded relations
+- Type-safe at compile time
+
+**Considerations:**
+- JOINs can be expensive for large result sets
+- Array relation JSON parsing adds overhead
+- Deep nesting increases query complexity
+- Consider pagination for large datasets
+
+**Best Practices:**
 ```zig
-const user = try client.user.findUnique(.{
-    .where = .{ .id = .{ .equals = user_id } },
+// Good: Load only what you need
+const users = try client.user.findMany(.{
+    .include = .{ .restaurant = true },
+});
+
+// Avoid: Loading too many relations
+const users = try client.user.findMany(.{
     .include = .{
         .restaurant = true,
-        .restaurant_include = .{
-            .country = true,
-        },
+        .profile = true,
+        .userRoles = true,
+        .permissions = true,
+        // ... too many relations
     },
 });
-// Will load user → restaurant → country
+
+// Better: Multiple targeted queries
+const users = try client.user.findMany(.{
+    .include = .{ .restaurant = true },
+});
+
+// Later, load roles only for users that need them
+for (users) |*user| {
+    if (needsRoles(user)) {
+        _ = try user.loadUserRolesCached(&client);
+    }
+}
 ```
+
+#### Empty Include Types
+
+Models without relations still get an empty Include type for API consistency:
+
+```zig
+pub const AuditLogArchiveInclude = struct {};
+
+const archive = try client.auditLogArchive.findUnique(.{
+    .where = .{ .id = .{ .equals = archive_id } },
+    .include = .{}, // Empty but type-safe
+});
+```
+
+This ensures all `findUnique` and `findMany` operations have a uniform signature.
 
 ### Relation Loading Patterns
 

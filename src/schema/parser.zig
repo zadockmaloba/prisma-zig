@@ -276,6 +276,9 @@ pub const Parser = struct {
             }
         }
 
+        // Second pass: Build inverse relation metadata for array relation loaders
+        try self.buildInverseRelations(&schema);
+
         return schema;
     }
 
@@ -304,6 +307,69 @@ pub const Parser = struct {
 
         std.log.err("{s} at line {d}, got: {s}", .{ message, self.current_token.line, self.current_token.lexeme });
         return ParseError.InvalidSyntax;
+    }
+
+    /// Build inverse relation metadata for array relation loaders
+    /// This creates the reverse mapping so that if User has restaurantId -> Restaurant.id,
+    /// we store that Restaurant has an inverse relation to User[]
+    fn buildInverseRelations(self: *Parser, schema: *Schema) ParseError!void {
+        // Iterate through all models
+        for (schema.models.items) |*from_model| {
+            // Check each field for @relation attributes
+            for (from_model.fields.items) |*field| {
+                // Only process model_ref relations (singular relations with FK)
+                if (field.type != .model_ref) continue;
+                
+                // Get the @relation attribute
+                const rel_attr = field.getRelationAttribute() orelse continue;
+                
+                // Must have fields (foreign key) specified
+                const fields = rel_attr.fields orelse continue;
+                if (fields.len == 0) continue;
+                
+                // Must have references (primary key) specified
+                const references = rel_attr.references orelse continue;
+                if (references.len == 0) continue;
+                
+                // Find the referenced model
+                const to_model_name = field.type.model_ref;
+                var found_model: ?*PrismaModel = null;
+                for (schema.models.items) |*model| {
+                    if (std.mem.eql(u8, model.name, to_model_name)) {
+                        found_model = model;
+                        break;
+                    }
+                }
+                
+                if (found_model) |to_model| {
+                    // Create plural name for the inverse relation
+                    // Simple pluralization: add 's' (could be improved)
+                    const plural_name = try std.fmt.allocPrint(
+                        self.allocator,
+                        "{s}s",
+                        .{from_model.name}
+                    );
+                    defer self.allocator.free(plural_name);
+                    
+                    // Create lowercase version for field name
+                    var lowercase_plural = try self.allocator.alloc(u8, plural_name.len);
+                    defer self.allocator.free(lowercase_plural);
+                    for (plural_name, 0..) |c, i| {
+                        lowercase_plural[i] = std.ascii.toLower(c);
+                    }
+                    
+                    // Store the inverse relation
+                    const inverse = types.InverseRelation{
+                        .from_model = from_model.name,
+                        .from_field = fields[0].value, // Foreign key field
+                        .to_field = references[0].value, // Primary key field
+                        .relation_name = lowercase_plural,
+                    };
+                    
+                    try to_model.addInverseRelation(inverse);
+                }
+            }
+        }
     }
 
     fn parseModel(self: *Parser) ParseError!PrismaModel {

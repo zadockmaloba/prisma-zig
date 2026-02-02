@@ -515,29 +515,61 @@ pub const Generator = struct {
 
     /// Generate loader for array relations (e.g., loadUserRoles)
     fn generateArrayRelationLoader(self: *Generator, model: *const PrismaModel, field: *const Field) CodeGenError!void {
-        _ = model; // will be used for reverse foreign key lookup
         var output = &self.output;
         const relation_model_name = field.type.getModelName().?;
         const escaped_field_name = try escapeFieldName(self.allocator, field.name);
         defer if (needsEscape(field.name)) self.allocator.free(escaped_field_name);
 
-        // For array relations, we need to find the reverse foreign key
-        // This will be implemented in step 10 (inverse relation metadata)
-        // For now, generate a placeholder
-
         const capitalized_name = try self.capitalizeFirst(field.name);
         defer self.allocator.free(capitalized_name);
+
+        // Find inverse relation metadata to get the foreign key field
+        const related_model = self.schema.getModel(relation_model_name);
+        var foreign_key_field: ?[]const u8 = null;
+
+        if (related_model) |rel_model| {
+            // Look through the related model's fields for a foreign key pointing to this model
+            for (rel_model.fields.items) |*rel_field| {
+                if (rel_field.type == .model_ref) {
+                    const ref_model_name = rel_field.type.model_ref;
+                    if (std.mem.eql(u8, ref_model_name, model.name)) {
+                        // Found a field in the related model that references this model
+                        // Get the FK field from the @relation attribute
+                        if (rel_field.getRelationAttribute()) |rel_attr| {
+                            if (rel_attr.fields) |fields| {
+                                if (fields.len > 0) {
+                                    foreign_key_field = fields[0].value;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
 
         try output.writer(self.allocator).print("\n    /// Load {s} relation (non-cached)\n", .{field.name});
         try output.writer(self.allocator).print("    pub fn load{s}(self: *const @This(), client: *PrismaClient, allocator: std.mem.Allocator) ![] {s} {{\n", .{
             capitalized_name,
             relation_model_name,
         });
-        try output.appendSlice(self.allocator, "        // TODO: Implement array relation loading with reverse foreign key\n");
-        try output.appendSlice(self.allocator, "        _ = client;\n");
-        try output.appendSlice(self.allocator, "        _ = allocator;\n");
-        try output.appendSlice(self.allocator, "        _ = self;\n");
-        try output.appendSlice(self.allocator, "        return error.NotImplemented;\n");
+
+        if (foreign_key_field) |fk_field| {
+            // Generate actual query using the foreign key
+            try output.writer(self.allocator).print("        // Query {s} where {s} = self.id\n", .{ relation_model_name, fk_field });
+            try output.appendSlice(self.allocator, "        _ = self;\n");
+            try output.appendSlice(self.allocator, "        _ = client;\n");
+            try output.appendSlice(self.allocator, "        _ = allocator;\n");
+            try output.writer(self.allocator).print("        // TODO: Call {s}.findMany with WHERE {s} = self.id\n", .{ relation_model_name, fk_field });
+            try output.appendSlice(self.allocator, "        return error.NotImplemented;\n");
+        } else {
+            // No foreign key found - this shouldn't happen in valid schema
+            try output.appendSlice(self.allocator, "        // Warning: Could not find foreign key in related model\n");
+            try output.appendSlice(self.allocator, "        _ = client;\n");
+            try output.appendSlice(self.allocator, "        _ = allocator;\n");
+            try output.appendSlice(self.allocator, "        _ = self;\n");
+            try output.appendSlice(self.allocator, "        return error.NotImplemented;\n");
+        }
         try output.appendSlice(self.allocator, "    }\n");
 
         // Generate cached loader
